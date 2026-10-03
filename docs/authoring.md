@@ -99,8 +99,9 @@ tma_plugin_sdk::plugin! {
 
 ```sh
 tma-plugin-dev keygen                    # 生成密钥对：私钥保密，公钥即分发身份
-tma-plugin-dev pubkey <私钥b64>           # 从私钥导出公钥
-tma-plugin-dev pack <插件目录> <私钥b64> -o out.tmap
+export TMA_PLUGIN_SIGNING_KEY_B64=<私钥b64>   # 私钥走环境变量，不进 argv/进程列表
+tma-plugin-dev pubkey                    # 从私钥导出公钥（也支持 --key-file PATH，- 为 stdin）
+tma-plugin-dev pack <插件目录> -o out.tmap
 # <插件目录> 须含 manifest.json 与 plugin.wasm
 #（把 target/wasm32-unknown-unknown/release/<crate>.wasm 复制为插件目录下
 #  plugin.wasm 再 pack；存在 icon.svg/icon.png 时自动打入）

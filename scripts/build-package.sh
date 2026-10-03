@@ -40,7 +40,7 @@ wasm="$dir/target/wasm32-unknown-unknown/release/$(printf '%s' "$crate" | tr '-'
 
 mkdir -p "$dir/dist"
 cp "$wasm" "$dir/plugin.wasm"
-"$TMA_PLUGIN_DEV" pack "$dir" "$TMA_PLUGIN_SIGNING_KEY_B64" -o "$dir/dist/$name.tmap"
+"$TMA_PLUGIN_DEV" pack "$dir" -o "$dir/dist/$name.tmap"
 # sha256 与被校验文件同目录、记相对名，便于 Release 页直接对照。
 if command -v sha256sum >/dev/null 2>&1; then
   (cd "$dir/dist" && sha256sum "$name.tmap" > "$name.tmap.sha256")

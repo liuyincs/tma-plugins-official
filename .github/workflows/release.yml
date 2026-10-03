@@ -81,7 +81,7 @@ jobs:
           git checkout -B main FETCH_HEAD
           # 官方签名公钥从 secret 私钥派生（人手不接触生产私钥）；密钥不变时
           # 重写内容相同，git add 后无 diff 即不纳入提交。
-          tma-plugin-dev pubkey "$TMA_PLUGIN_SIGNING_KEY_B64" > public-key.txt
+          tma-plugin-dev pubkey > public-key.txt
           python3 scripts/update-catalog.py "plugins/$PLUGIN_DIR" --version "$VERSION" --tag "$TAG"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
