@@ -1,0 +1,90 @@
+name: Release plugin
+
+# 一个插件一个 tag：`<dir>-v<semver>`，<dir> 即 plugins/ 下的目录名。
+# 例：发布 plugins/template 的 0.1.0 → 推送 tag `template-v0.1.0`。
+# 流程：构建 wasm → cargo install tma-plugin-dev → 用 secrets 里的官方
+# 签名私钥 pack → gh release create 挂 .tmap/.sha256 → update-catalog.py
+# 回写 catalog.json 并提交回 main。
+
+on:
+  push:
+    tags: ["*-v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 解析 tag → 插件目录与版本
+        id: meta
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -eu
+          dir="${TAG%-v*}"
+          version="${TAG##*-v}"
+          test -d "plugins/$dir" || {
+            echo "tag $TAG：plugins/$dir 不存在" >&2
+            exit 1
+          }
+          manifest_version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "plugins/$dir/manifest.json")
+          test "$version" = "$manifest_version" || {
+            echo "tag 版本 $version 与 plugins/$dir/manifest.json 的 $manifest_version 不一致" >&2
+            exit 1
+          }
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: wasm32-unknown-unknown
+
+      - name: 构建 wasm
+        run: cargo build --target wasm32-unknown-unknown --release --manifest-path "plugins/${{ steps.meta.outputs.dir }}/Cargo.toml"
+
+      - name: 安装 tma-plugin-dev
+        run: cargo install tma-plugin-dev --locked
+
+      - name: 签名打包
+        env:
+          TMA_PLUGIN_SIGNING_KEY_B64: ${{ secrets.TMA_PLUGIN_SIGNING_KEY_B64 }}
+        run: scripts/build-package.sh "plugins/${{ steps.meta.outputs.dir }}"
+
+      - name: 校验 sha256
+        run: |
+          cd "plugins/${{ steps.meta.outputs.dir }}/dist"
+          sha256sum -c "${{ steps.meta.outputs.dir }}.tmap.sha256"
+
+      - name: 创建 Release 并上传产物
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PLUGIN_DIR: ${{ steps.meta.outputs.dir }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" "plugins/$PLUGIN_DIR/dist/$PLUGIN_DIR.tmap" "plugins/$PLUGIN_DIR/dist/$PLUGIN_DIR.tmap.sha256" --title "$TAG" --generate-notes
+
+      - name: 更新 catalog.json 并提交回 main
+        env:
+          PLUGIN_DIR: ${{ steps.meta.outputs.dir }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          TAG: ${{ github.ref_name }}
+          TMA_PLUGIN_SIGNING_KEY_B64: ${{ secrets.TMA_PLUGIN_SIGNING_KEY_B64 }}
+        run: |
+          set -eu
+          # catalog 永远写回 main 而非 tag 本身；dist/ 是 git 忽略产物，
+          # 切换分支不受影响。
+          git fetch origin main
+          git checkout -B main FETCH_HEAD
+          # 官方签名公钥从 secret 私钥派生（人手不接触生产私钥）；密钥不变时
+          # 重写内容相同，git add 后无 diff 即不纳入提交。
+          tma-plugin-dev pubkey "$TMA_PLUGIN_SIGNING_KEY_B64" > public-key.txt
+          python3 scripts/update-catalog.py "plugins/$PLUGIN_DIR" --version "$VERSION" --tag "$TAG"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add catalog.json public-key.txt
+          git commit -m "catalog: $PLUGIN_DIR $VERSION"
+          git push origin HEAD:main

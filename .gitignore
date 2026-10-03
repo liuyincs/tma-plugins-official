@@ -1,0 +1,9 @@
+target/
+plugin.wasm
+plugins/*/dist/
+.DS_Store
+
+# 签名私钥绝不入库（公钥 public-key.txt 除外）
+*.key
+*.key.b64
+.env*

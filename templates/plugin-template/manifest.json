@@ -1,0 +1,18 @@
+{
+  "id": "tma.example.template",
+  "name": "Template",
+  "version": "0.1.0",
+  "abi": {
+    "min": { "major": 1, "minor": 0 },
+    "max": { "major": 1, "minor": 6 }
+  },
+  "extension_points": ["scrape_provider"],
+  "permissions": [],
+  "scrape": {
+    "provider": "template",
+    "capabilities": ["external_ids"],
+    "requires_credentials": false
+  },
+  "description": "最小刮削插件模板：返回固定占位结果，复制后按注释替换为真实业务逻辑。",
+  "author": "TMA"
+}
