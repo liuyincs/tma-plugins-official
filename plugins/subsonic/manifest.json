@@ -1,0 +1,60 @@
+{
+  "id": "tma.official.subsonic",
+  "name": "Subsonic / OpenSubsonic",
+  "version": "0.1.0",
+  "abi": {
+    "min": {
+      "major": 1,
+      "minor": 6
+    },
+    "max": {
+      "major": 1,
+      "minor": 6
+    }
+  },
+  "extension_points": [
+    "http"
+  ],
+  "permissions": [
+    {
+      "capability": {
+        "name": "catalog.read",
+        "reason": "浏览当前用户可见的音乐目录"
+      }
+    },
+    {
+      "capability": {
+        "name": "identity.read",
+        "reason": "将 Subsonic 客户端认证映射到当前用户"
+      }
+    },
+    {
+      "capability": {
+        "name": "media.stream",
+        "reason": "播放当前用户可见的曲目"
+      }
+    }
+  ],
+  "http": {
+    "routes": [
+      {
+        "path": "/rest/*",
+        "methods": [
+          "GET",
+          "HEAD"
+        ]
+      }
+    ]
+  },
+  "description": "只读 Subsonic/OpenSubsonic 适配器，支持目录浏览和曲目播放。",
+  "author": "TMA",
+  "homepage": "https://github.com/liuyincs/tma-plugins-official/tree/main/plugins/subsonic",
+  "i18n": {
+    "en": {
+      "description": "Read-only Subsonic/OpenSubsonic adapter: exposes catalog browsing and track playback to Subsonic clients through /rest/*."
+    },
+    "zh": {
+      "description": "只读 Subsonic/OpenSubsonic 适配器，支持目录浏览和曲目播放。"
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "id": "tma.builtin.wikidata",
+  "name": "Wikidata",
+  "version": "0.1.0",
+  "abi": {
+    "min": { "major": 1, "minor": 0 },
+    "max": { "major": 1, "minor": 6 }
+  },
+  "extension_points": ["scrape_provider"],
+  "scrape": {
+    "provider": "wikidata",
+    "capabilities": ["external_ids"],
+    "requires_credentials": false
+  }
+}
