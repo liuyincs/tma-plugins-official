@@ -69,6 +69,37 @@
       "sha256": "4681e854488d294af99ae9302991383a088f45c6c49d16010873bd420ee278f4",
       "public_key_url": "https://raw.githubusercontent.com/liuyincs/tma-plugins-official/apple_music-v0.2.0/public-key.txt",
       "public_key_fingerprint": "sha256:aebbc3594c76ab3d22ee2baf806695671df1318df8c6f5a48b6257a42ec734a0"
+    },
+    {
+      "id": "tma.official.fanart_tv",
+      "name": "Fanart.tv",
+      "version": "0.2.0",
+      "description": "Fetches artist artwork from Fanart.tv keyed by MusicBrainz ID: artist thumbnails, backgrounds, logos, banners and album covers, picking the most-liked image of each kind. Requires a project api_key from fanart.tv (free to request). Use \"Test connection\" to verify the api_key works.",
+      "author": "TMA",
+      "homepage": "https://github.com/liuyincs/tma-plugins-official/tree/main/plugins/fanart_tv",
+      "abi": {
+        "min": {
+          "major": 1,
+          "minor": 5
+        },
+        "max": {
+          "major": 1,
+          "minor": 5
+        }
+      },
+      "permissions": [
+        {
+          "http": {
+            "scheme": "https",
+            "host": "webservice.fanart.tv",
+            "reason": "Fanart.tv 艺术家/专辑套图接口"
+          }
+        }
+      ],
+      "download_url": "https://github.com/liuyincs/tma-plugins-official/releases/download/fanart_tv-v0.2.0/fanart_tv.tmap",
+      "sha256": "f02bc39c8f355e15793bd3256641a1a57641ebb99d13081a82bc34f280224d36",
+      "public_key_url": "https://raw.githubusercontent.com/liuyincs/tma-plugins-official/fanart_tv-v0.2.0/public-key.txt",
+      "public_key_fingerprint": "sha256:aebbc3594c76ab3d22ee2baf806695671df1318df8c6f5a48b6257a42ec734a0"
     }
   ]
 }
