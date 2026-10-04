@@ -131,6 +131,37 @@
       "sha256": "6c609c64432ce04905c75c13327b93ff3995e57cfa5074635165f784d27ee381",
       "public_key_url": "https://raw.githubusercontent.com/liuyincs/tma-plugins-official/listenbrainz-v0.1.0/public-key.txt",
       "public_key_fingerprint": "sha256:aebbc3594c76ab3d22ee2baf806695671df1318df8c6f5a48b6257a42ec734a0"
+    },
+    {
+      "id": "tma.official.lastfm",
+      "name": "Last.fm",
+      "version": "0.4.0",
+      "description": "Enriches artists and albums from Last.fm: biographies, images and external IDs via artist.getInfo / album.getInfo, falling back to name search when no MBID is known; also reports scrobbles and now-playing notifications via track.scrobble / track.updateNowPlaying. An admin configures the API key and shared secret; each user connects their Last.fm account in the browser (auth.getToken / auth.getSession) without sharing a password with TMA.",
+      "author": "TMA",
+      "homepage": "https://github.com/liuyincs/tma-plugins-official/tree/main/plugins/lastfm",
+      "abi": {
+        "min": {
+          "major": 1,
+          "minor": 5
+        },
+        "max": {
+          "major": 1,
+          "minor": 5
+        }
+      },
+      "permissions": [
+        {
+          "http": {
+            "scheme": "https",
+            "host": "ws.audioscrobbler.com",
+            "reason": "Last.fm 艺术家/专辑 getInfo 与 search 接口，以及 track.scrobble / track.updateNowPlaying / auth.getToken / auth.getSession 播放记录上报与网页授权"
+          }
+        }
+      ],
+      "download_url": "https://github.com/liuyincs/tma-plugins-official/releases/download/lastfm-v0.4.0/lastfm.tmap",
+      "sha256": "7d0af0302c86a15e51b6f3ac0a5153152bb7ef4f9afefeca1535dadfda16626e",
+      "public_key_url": "https://raw.githubusercontent.com/liuyincs/tma-plugins-official/lastfm-v0.4.0/public-key.txt",
+      "public_key_fingerprint": "sha256:aebbc3594c76ab3d22ee2baf806695671df1318df8c6f5a48b6257a42ec734a0"
     }
   ]
 }
