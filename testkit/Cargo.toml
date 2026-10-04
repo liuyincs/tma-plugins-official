@@ -1,0 +1,24 @@
+# 独立可建：不依赖任何上层 Cargo.toml。本 crate 只做插件验收测试的共享件，
+# 不作为插件发布、不进 catalog.json、不被 release.yml 处理。
+[workspace]
+members = ["."]
+resolver = "2"
+
+[package]
+name = "testkit"
+version = "0.0.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "TMA 官方插件验收测试共享件：stub 出站代理、宿主函数桩、真实签名包加载"
+
+[dependencies]
+tma-plugin-sdk = { version = "0.1", features = ["package"] }
+# 与宿主侧 tma-plugin-host 同版本/同特性口径（运行时走宿主注入的桩函数，
+# 不引 ureq、不注册文件系统/远程 wasm）。
+extism = { version = "1.30", default-features = false, features = ["wasmtime-default-features"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+# SDK `package` feature 的签名类型（SigningKey/VerifyingKey）需在 API 面具名。
+ed25519-dalek = { version = "2", features = ["rand_core"] }

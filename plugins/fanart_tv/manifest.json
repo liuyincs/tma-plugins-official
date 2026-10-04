@@ -1,0 +1,76 @@
+{
+  "id": "tma.official.fanart_tv",
+  "name": "Fanart.tv",
+  "version": "0.2.0",
+  "abi": {
+    "min": {
+      "major": 1,
+      "minor": 5
+    },
+    "max": {
+      "major": 1,
+      "minor": 5
+    }
+  },
+  "extension_points": [
+    "scrape_provider"
+  ],
+  "permissions": [
+    {
+      "http": {
+        "scheme": "https",
+        "host": "webservice.fanart.tv",
+        "reason": "Fanart.tv 艺术家/专辑套图接口"
+      }
+    }
+  ],
+  "scrape": {
+    "provider": "fanart",
+    "capabilities": [
+      "external_ids",
+      "image"
+    ],
+    "requires_credentials": true,
+    "library_types": [
+      "music"
+    ]
+  },
+  "description": "Fetches artist artwork from Fanart.tv keyed by MusicBrainz ID: artist thumbnails, backgrounds, logos, banners and album covers, picking the most-liked image of each kind. Requires a project api_key from fanart.tv (free to request). Use \"Test connection\" to verify the api_key works.",
+  "author": "TMA",
+  "config_schema": {
+    "type": "object",
+    "properties": {
+      "api_key": {
+        "type": "string",
+        "title": "$config.api_key.title",
+        "description": "$config.api_key.description"
+      }
+    },
+    "required": [
+      "api_key"
+    ]
+  },
+  "config_secrets": [
+    "api_key"
+  ],
+  "actions": [
+    {
+      "id": "test_connection",
+      "label": "$actions.test_connection.label"
+    }
+  ],
+  "i18n": {
+    "en": {
+      "description": "Fetches artist artwork from Fanart.tv keyed by MusicBrainz ID: artist thumbnails, backgrounds, logos, banners and album covers, picking the most-liked image of each kind. Requires a project api_key from fanart.tv (free to request). Use \"Test connection\" to verify the api_key works.",
+      "config.api_key.title": "API key",
+      "config.api_key.description": "Fanart.tv project api key (personal key from the fanart.tv project page).",
+      "actions.test_connection.label": "Test connection"
+    },
+    "zh": {
+      "description": "按 MusicBrainz ID 从 Fanart.tv 抓取艺术家套图：头像、背景、logo、横幅与专辑封面，每类取点赞最高的图。需要 fanart.tv 的项目 api_key（可免费申请）。可用「测试连接」验证 api_key 是否有效。",
+      "config.api_key.title": "API key",
+      "config.api_key.description": "fanart.tv 项目页申请的项目 api key（个人密钥）。",
+      "actions.test_connection.label": "测试连接"
+    }
+  }
+}

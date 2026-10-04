@@ -90,6 +90,14 @@ tma_plugin_sdk::plugin! {
   `media.stream`，实际请求仍经宿主 DTO 逐次校验；
 - 未声明的请求宿主逐次拒绝（默认拒绝，不是安装期一次性判定）。
 
+## 验收测试
+
+`tests/` 放行为级验收测试：`testkit`（仓库根共享件）负责构建 wasm、测试私钥
+打包验签、extism 实例化与 stub 出站代理——测试直接调 `scrape`/`tma_action`/
+`tma_event` 导出断言请求形状与响应语义。写法见 `plugins/spotify/tests/`
+与 `testkit/`；`cargo test` 在插件目录内跑全量（含双 target 纯逻辑单测）。
+CI 在发布签名前强制执行（`.github/workflows/test.yml` 与 `release.yml`）。
+
 ## 签名与打包
 
 `.tmap` 是 STORED ZIP：`manifest.json` + `plugin.wasm` + `SIGNATURE.sig`
