@@ -1,0 +1,43 @@
+name: Test
+
+# push 到 main 与全部 PR：各插件独立 workspace 内跑 wasm 构建 + 全量测试
+# （tests/ 验收测试驱动真实签名包 + stub 出站；listenbrainz/lastfm 的
+# scrobble 纯逻辑单测随 `cargo test` 一并跑）。testkit 是共享测试件，自测
+# 与 check 单独一个 job，不进插件 matrix。
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  plugins:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [spotify, apple_music, fanart_tv, listenbrainz, lastfm]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: wasm32-unknown-unknown
+
+      - name: 构建 wasm
+        run: cargo build --target wasm32-unknown-unknown --release --manifest-path "plugins/${{ matrix.dir }}/Cargo.toml"
+
+      - name: 测试（单元 + 验收）
+        run: cargo test --manifest-path "plugins/${{ matrix.dir }}/Cargo.toml"
+
+  testkit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - run: cargo check --manifest-path testkit/Cargo.toml
+      - run: cargo test --manifest-path testkit/Cargo.toml
