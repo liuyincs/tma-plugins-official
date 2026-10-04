@@ -38,6 +38,37 @@
       "sha256": "86db14868f79bcb0370c48260b5eaf4aaa00c40a94fb498bdaf2590d824a239a",
       "public_key_url": "https://raw.githubusercontent.com/liuyincs/tma-plugins-official/spotify-v0.2.0/public-key.txt",
       "public_key_fingerprint": "sha256:aebbc3594c76ab3d22ee2baf806695671df1318df8c6f5a48b6257a42ec734a0"
+    },
+    {
+      "id": "tma.official.apple_music",
+      "name": "Apple Music",
+      "version": "0.2.0",
+      "description": "Resolves artists to Apple Music catalog IDs by searching the catalog (`/v1/catalog/{storefront}/search`), so artists can link back to Apple Music. Requires a developer token (a MusicKit ES256 JWT); the storefront defaults to `us`. Use \"Test connection\" to verify the token and storefront before scraping.",
+      "author": "TMA",
+      "homepage": "https://github.com/liuyincs/tma-plugins-official/tree/main/plugins/apple_music",
+      "abi": {
+        "min": {
+          "major": 1,
+          "minor": 5
+        },
+        "max": {
+          "major": 1,
+          "minor": 5
+        }
+      },
+      "permissions": [
+        {
+          "http": {
+            "scheme": "https",
+            "host": "api.music.apple.com",
+            "reason": "Apple Music 目录搜索（Bearer developer token）"
+          }
+        }
+      ],
+      "download_url": "https://github.com/liuyincs/tma-plugins-official/releases/download/apple_music-v0.2.0/apple_music.tmap",
+      "sha256": "4681e854488d294af99ae9302991383a088f45c6c49d16010873bd420ee278f4",
+      "public_key_url": "https://raw.githubusercontent.com/liuyincs/tma-plugins-official/apple_music-v0.2.0/public-key.txt",
+      "public_key_fingerprint": "sha256:aebbc3594c76ab3d22ee2baf806695671df1318df8c6f5a48b6257a42ec734a0"
     }
   ]
 }
