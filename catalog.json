@@ -100,6 +100,37 @@
       "sha256": "f02bc39c8f355e15793bd3256641a1a57641ebb99d13081a82bc34f280224d36",
       "public_key_url": "https://raw.githubusercontent.com/liuyincs/tma-plugins-official/fanart_tv-v0.2.0/public-key.txt",
       "public_key_fingerprint": "sha256:aebbc3594c76ab3d22ee2baf806695671df1318df8c6f5a48b6257a42ec734a0"
+    },
+    {
+      "id": "tma.official.listenbrainz",
+      "name": "ListenBrainz",
+      "version": "0.1.0",
+      "description": "Reports scrobbles and now-playing notifications to a ListenBrainz account via /1/submit-listens (single listens with listened_at, playing_now with progress), including MusicBrainz identifiers in additional_info. Needs a user token from listenbrainz.org/settings/musicbrainz; saving it validates the token against /1/validate-token. Tracks shorter than 30 seconds are skipped.",
+      "author": "TMA",
+      "homepage": "https://github.com/liuyincs/tma-plugins-official/tree/main/plugins/listenbrainz",
+      "abi": {
+        "min": {
+          "major": 1,
+          "minor": 5
+        },
+        "max": {
+          "major": 1,
+          "minor": 5
+        }
+      },
+      "permissions": [
+        {
+          "http": {
+            "scheme": "https",
+            "host": "api.listenbrainz.org",
+            "reason": "提交播放记录与正在播放通知"
+          }
+        }
+      ],
+      "download_url": "https://github.com/liuyincs/tma-plugins-official/releases/download/listenbrainz-v0.1.0/listenbrainz.tmap",
+      "sha256": "6c609c64432ce04905c75c13327b93ff3995e57cfa5074635165f784d27ee381",
+      "public_key_url": "https://raw.githubusercontent.com/liuyincs/tma-plugins-official/listenbrainz-v0.1.0/public-key.txt",
+      "public_key_fingerprint": "sha256:aebbc3594c76ab3d22ee2baf806695671df1318df8c6f5a48b6257a42ec734a0"
     }
   ]
 }
