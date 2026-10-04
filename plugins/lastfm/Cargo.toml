@@ -1,0 +1,25 @@
+# 独立可建：插件目录自带 workspace，不依赖任何上层 Cargo.toml。
+[workspace]
+members = ["."]
+resolver = "2"
+
+[package]
+name = "tma-official-lastfm"
+version = "0.4.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Last.fm api_sig = MD5(排序参数串 + shared_secret)：选 RustCrypto 的 md-5
+# （digest 家族、无 wasm-bindgen 传递依赖，wasm32-unknown-unknown 可编译）。
+md-5 = "0.10"
+tma-plugin-sdk = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+testkit = { path = "../../testkit" }

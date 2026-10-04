@@ -1,0 +1,92 @@
+{
+  "id": "tma.official.spotify",
+  "name": "Spotify",
+  "version": "0.2.0",
+  "abi": {
+    "min": {
+      "major": 1,
+      "minor": 5
+    },
+    "max": {
+      "major": 1,
+      "minor": 5
+    }
+  },
+  "extension_points": [
+    "scrape_provider"
+  ],
+  "permissions": [
+    {
+      "http": {
+        "scheme": "https",
+        "host": "accounts.spotify.com",
+        "reason": "Spotify Client Credentials 换取 access token"
+      }
+    },
+    {
+      "http": {
+        "scheme": "https",
+        "host": "api.spotify.com",
+        "reason": "Spotify 搜索接口（按名称或 ISRC 检索艺术家）"
+      }
+    }
+  ],
+  "scrape": {
+    "provider": "spotify",
+    "capabilities": [
+      "external_ids"
+    ],
+    "requires_credentials": true,
+    "library_types": [
+      "music"
+    ]
+  },
+  "description": "Resolves artists to Spotify IDs with the Client Credentials flow: exchanges client id/secret for a token, then searches by artist name or ISRC (`/v1/search`) and persists only the ID. Requires the client ID and client secret of a Spotify app from the developer dashboard. Use \"Test connection\" to verify the credentials can obtain a token.",
+  "author": "TMA",
+  "config_schema": {
+    "type": "object",
+    "properties": {
+      "client_id": {
+        "type": "string",
+        "title": "$config.client_id.title",
+        "description": "$config.client_id.description"
+      },
+      "client_secret": {
+        "type": "string",
+        "title": "$config.client_secret.title",
+        "description": "$config.client_secret.description"
+      }
+    },
+    "required": [
+      "client_id",
+      "client_secret"
+    ]
+  },
+  "config_secrets": [
+    "client_secret"
+  ],
+  "actions": [
+    {
+      "id": "test_connection",
+      "label": "$actions.test_connection.label"
+    }
+  ],
+  "i18n": {
+    "en": {
+      "description": "Resolves artists to Spotify IDs with the Client Credentials flow: exchanges client id/secret for a token, then searches by artist name or ISRC (`/v1/search`) and persists only the ID. Requires the client ID and client secret of a Spotify app from the developer dashboard. Use \"Test connection\" to verify the credentials can obtain a token.",
+      "config.client_id.title": "Client ID",
+      "config.client_id.description": "Client ID of your Spotify app (Spotify developer dashboard).",
+      "config.client_secret.title": "Client secret",
+      "config.client_secret.description": "Client secret of your Spotify app; stored encrypted and never echoed back.",
+      "actions.test_connection.label": "Test connection"
+    },
+    "zh": {
+      "description": "以 Client Credentials 流程为艺术家解析 Spotify ID：用 client id/secret 换取 token 后按名称或 ISRC 检索（`/v1/search`），只持久化 ID。需要 Spotify 开发者后台应用的 client ID 与 client secret。可用「测试连接」验证凭据能否换取 token。",
+      "config.client_id.title": "Client ID",
+      "config.client_id.description": "Spotify 应用（开发者后台）的 Client ID。",
+      "config.client_secret.title": "Client secret",
+      "config.client_secret.description": "Spotify 应用的 Client secret；加密存储且不回显。",
+      "actions.test_connection.label": "测试连接"
+    }
+  }
+}

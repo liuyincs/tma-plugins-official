@@ -1,0 +1,140 @@
+{
+  "id": "tma.official.lastfm",
+  "name": "Last.fm",
+  "version": "0.4.0",
+  "abi": {
+    "min": {
+      "major": 1,
+      "minor": 5
+    },
+    "max": {
+      "major": 1,
+      "minor": 5
+    }
+  },
+  "extension_points": [
+    "scrape_provider",
+    "scrobble_reporter"
+  ],
+  "permissions": [
+    {
+      "http": {
+        "scheme": "https",
+        "host": "ws.audioscrobbler.com",
+        "reason": "Last.fm 艺术家/专辑 getInfo 与 search 接口，以及 track.scrobble / track.updateNowPlaying / auth.getToken / auth.getSession 播放记录上报与网页授权"
+      }
+    }
+  ],
+  "scrape": {
+    "provider": "lastfm",
+    "capabilities": [
+      "external_ids",
+      "bio",
+      "image"
+    ],
+    "requires_credentials": true,
+    "library_types": [
+      "music"
+    ]
+  },
+  "scrobble_reporter": {
+    "events": [
+      "scrobble",
+      "now_playing"
+    ],
+    "library_types": [
+      "music"
+    ]
+  },
+  "description": "Enriches artists and albums from Last.fm: biographies, images and external IDs via artist.getInfo / album.getInfo, falling back to name search when no MBID is known; also reports scrobbles and now-playing notifications via track.scrobble / track.updateNowPlaying. An admin configures the API key and shared secret; each user connects their Last.fm account in the browser (auth.getToken / auth.getSession) without sharing a password with TMA.",
+  "author": "TMA",
+  "config_schema": {
+    "type": "object",
+    "properties": {
+      "api_key": {
+        "type": "string",
+        "title": "$config.api_key.title",
+        "description": "$config.api_key.description"
+      },
+      "shared_secret": {
+        "type": "string",
+        "title": "$config.shared_secret.title",
+        "description": "$config.shared_secret.description"
+      },
+      "language": {
+        "type": "string",
+        "enum": [
+          "zh",
+          "en",
+          "ja",
+          "de",
+          "fr"
+        ],
+        "title": "$config.language.title",
+        "description": "$config.language.description"
+      }
+    },
+    "required": [
+      "api_key"
+    ]
+  },
+  "config_secrets": [
+    "api_key",
+    "shared_secret"
+  ],
+  "user_config_schema": {
+    "type": "object",
+    "properties": {
+      "session_key": {
+        "type": "string",
+        "readOnly": true,
+        "title": "$user_config.session_key.title",
+        "description": "$user_config.session_key.description"
+      }
+    },
+    "required": [
+      "session_key"
+    ]
+  },
+  "user_config_secrets": [
+    "session_key"
+  ],
+  "actions": [
+    {
+      "id": "test_connection",
+      "label": "$actions.test_connection.label"
+    },
+    {
+      "id": "authorize",
+      "label": "$actions.authorize.label"
+    }
+  ],
+  "i18n": {
+    "en": {
+      "description": "Enriches artists and albums from Last.fm: biographies, images and external IDs via artist.getInfo / album.getInfo, falling back to name search when no MBID is known; also reports scrobbles and now-playing notifications via track.scrobble / track.updateNowPlaying. An admin configures the API key and shared secret; each user connects their Last.fm account in the browser (auth.getToken / auth.getSession) without sharing a password with TMA.",
+      "config.api_key.title": "API key",
+      "config.api_key.description": "API key from last.fm/api/account/create. Used for scraping and for each user's Last.fm link.",
+      "config.shared_secret.title": "Shared secret",
+      "config.shared_secret.description": "Shared secret paired with the API key. Required for scrobbling and the Connect flow. Stored encrypted.",
+      "config.language.title": "Bio language",
+      "config.language.description": "Preferred language for biographies (zh/en/ja/de/fr); empty is treated as zh, retrying in English when empty.",
+      "user_config.session_key.title": "Session key",
+      "user_config.session_key.description": "Obtained when you click Connect and allow access on Last.fm; not a user-facing field.",
+      "actions.test_connection.label": "Test connection",
+      "actions.authorize.label": "Connect"
+    },
+    "zh": {
+      "description": "用 Last.fm 补齐艺术家与专辑：经 artist.getInfo / album.getInfo 取简介、图片与外部 ID，未知 MBID 时先按名称搜索；并经 track.scrobble / track.updateNowPlaying 上报播放记录与正在播放。管理员配置 API key 与 Shared secret；每位用户在浏览器里连接自己的 Last.fm 账户（auth.getToken / auth.getSession），不必把密码交给 TMA。",
+      "config.api_key.title": "API key",
+      "config.api_key.description": "在 last.fm/api/account/create 创建。刮削与用户连接共用。",
+      "config.shared_secret.title": "Shared secret",
+      "config.shared_secret.description": "与 API key 配对的共享密钥。上报与「连接」流程需要。加密存储。",
+      "config.language.title": "简介语言",
+      "config.language.description": "简介首选语言（zh/en/ja/de/fr），留空按 zh 处理，取不到时回退英文。",
+      "user_config.session_key.title": "Session key",
+      "user_config.session_key.description": "点击连接并在 Last.fm 允许访问后由系统写入，不是用户填写项。",
+      "actions.test_connection.label": "测试连接",
+      "actions.authorize.label": "连接"
+    }
+  }
+}

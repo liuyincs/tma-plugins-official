@@ -1,0 +1,74 @@
+{
+  "id": "tma.official.listenbrainz",
+  "name": "ListenBrainz",
+  "version": "0.1.0",
+  "abi": {
+    "min": {
+      "major": 1,
+      "minor": 5
+    },
+    "max": {
+      "major": 1,
+      "minor": 5
+    }
+  },
+  "extension_points": [
+    "scrobble_reporter"
+  ],
+  "scrobble_reporter": {
+    "events": [
+      "scrobble",
+      "now_playing"
+    ],
+    "library_types": [
+      "music"
+    ]
+  },
+  "permissions": [
+    {
+      "http": {
+        "scheme": "https",
+        "host": "api.listenbrainz.org",
+        "reason": "提交播放记录与正在播放通知"
+      }
+    }
+  ],
+  "description": "Reports scrobbles and now-playing notifications to a ListenBrainz account via /1/submit-listens (single listens with listened_at, playing_now with progress), including MusicBrainz identifiers in additional_info. Needs a user token from listenbrainz.org/settings/musicbrainz; saving it validates the token against /1/validate-token. Tracks shorter than 30 seconds are skipped.",
+  "author": "TMA",
+  "user_config_schema": {
+    "type": "object",
+    "properties": {
+      "token": {
+        "type": "string",
+        "title": "$user_config.token.title",
+        "description": "$user_config.token.description"
+      }
+    },
+    "required": [
+      "token"
+    ]
+  },
+  "user_config_secrets": [
+    "token"
+  ],
+  "actions": [
+    {
+      "id": "authorize",
+      "label": "$actions.authorize.label"
+    }
+  ],
+  "i18n": {
+    "en": {
+      "description": "Reports scrobbles and now-playing notifications to a ListenBrainz account via /1/submit-listens (single listens with listened_at, playing_now with progress), including MusicBrainz identifiers in additional_info. Needs a user token from listenbrainz.org/settings/musicbrainz; saving it validates the token against /1/validate-token. Tracks shorter than 30 seconds are skipped.",
+      "user_config.token.title": "User token",
+      "user_config.token.description": "ListenBrainz user token (listenbrainz.org → Settings → MusicBrainz). Stored encrypted and never echoed back.",
+      "actions.authorize.label": "Authorize"
+    },
+    "zh": {
+      "description": "把播放记录与正在播放通知上报到 ListenBrainz 账户：经 /1/submit-listens 提交（scrobble 带 listened_at，正在播放带进度），additional_info 附带 MusicBrainz 标识。需要 listenbrainz.org → Settings → MusicBrainz 里的用户 token；保存时经 /1/validate-token 校验有效性。不足 30 秒的曲目跳过。",
+      "user_config.token.title": "用户 token",
+      "user_config.token.description": "ListenBrainz 用户 token（listenbrainz.org → Settings → MusicBrainz）。加密存储且不回显。",
+      "actions.authorize.label": "授权"
+    }
+  }
+}

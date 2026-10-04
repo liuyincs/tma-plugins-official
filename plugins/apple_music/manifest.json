@@ -1,0 +1,84 @@
+{
+  "id": "tma.official.apple_music",
+  "name": "Apple Music",
+  "version": "0.2.0",
+  "abi": {
+    "min": {
+      "major": 1,
+      "minor": 5
+    },
+    "max": {
+      "major": 1,
+      "minor": 5
+    }
+  },
+  "extension_points": [
+    "scrape_provider"
+  ],
+  "permissions": [
+    {
+      "http": {
+        "scheme": "https",
+        "host": "api.music.apple.com",
+        "reason": "Apple Music 目录搜索（Bearer developer token）"
+      }
+    }
+  ],
+  "scrape": {
+    "provider": "apple_music",
+    "capabilities": [
+      "external_ids"
+    ],
+    "requires_credentials": true,
+    "library_types": [
+      "music"
+    ]
+  },
+  "description": "Resolves artists to Apple Music catalog IDs by searching the catalog (`/v1/catalog/{storefront}/search`), so artists can link back to Apple Music. Requires a developer token (a MusicKit ES256 JWT); the storefront defaults to `us`. Use \"Test connection\" to verify the token and storefront before scraping.",
+  "author": "TMA",
+  "config_schema": {
+    "type": "object",
+    "properties": {
+      "developer_token": {
+        "type": "string",
+        "title": "$config.developer_token.title",
+        "description": "$config.developer_token.description"
+      },
+      "storefront": {
+        "type": "string",
+        "title": "$config.storefront.title",
+        "description": "$config.storefront.description"
+      }
+    },
+    "required": [
+      "developer_token"
+    ]
+  },
+  "config_secrets": [
+    "developer_token"
+  ],
+  "actions": [
+    {
+      "id": "test_connection",
+      "label": "$actions.test_connection.label"
+    }
+  ],
+  "i18n": {
+    "en": {
+      "description": "Resolves artists to Apple Music catalog IDs by searching the catalog (`/v1/catalog/{storefront}/search`), so artists can link back to Apple Music. Requires a developer token (a MusicKit ES256 JWT); the storefront defaults to `us`. Use \"Test connection\" to verify the token and storefront before scraping.",
+      "config.developer_token.title": "Developer token",
+      "config.developer_token.description": "MusicKit developer token (ES256 JWT) generated for your Apple developer team.",
+      "config.storefront.title": "Storefront",
+      "config.storefront.description": "ISO country code of the catalog to search (e.g. us, jp); defaults to us.",
+      "actions.test_connection.label": "Test connection"
+    },
+    "zh": {
+      "description": "通过目录搜索（`/v1/catalog/{storefront}/search`）为艺术家解析 Apple Music 目录 ID，便于回链 Apple Music。需要 developer token（MusicKit ES256 JWT）；storefront 缺省 `us`。可用「测试连接」在刮削前验证 token 与 storefront。",
+      "config.developer_token.title": "Developer token",
+      "config.developer_token.description": "为 Apple 开发者团队生成的 MusicKit developer token（ES256 JWT）。",
+      "config.storefront.title": "Storefront",
+      "config.storefront.description": "目录搜索的 ISO 国家码（如 us、jp），缺省 us。",
+      "actions.test_connection.label": "测试连接"
+    }
+  }
+}
