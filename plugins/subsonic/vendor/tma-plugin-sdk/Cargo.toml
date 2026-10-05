@@ -1,0 +1,42 @@
+[package]
+name = "tma-plugin-sdk"
+version = "0.3.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+description = "Tag My Audio plugin SDK, ABI types, macros, and signed package tooling"
+homepage = "https://github.com/liuyincs/tma-plugins-official"
+
+[features]
+default = []
+# .tmap 打包与验签工具。插件默认不带签名相关依赖。
+package = ["dep:zip", "dep:sha2", "dep:ed25519-dalek"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+semver = "1"
+unicode-normalization = "0.1"
+simplecc = { version = "0.2.2", features = ["builtin_dicts"] }
+zip = { version = "8", default-features = false, optional = true }
+sha2 = { version = "0.10", optional = true }
+ed25519-dalek = { version = "2", features = ["rand_core"], optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+extism-pdk = { version = "1.4", default-features = false }
+
+# rand 只被 package 测试用于生成密钥；getrandom 0.2 不支持 wasm32-unknown-unknown，
+# 故限定宿主 target，保证 `--target wasm32-unknown-unknown --all-targets` 可检查
+# tests/ 下的宏展开覆盖。
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+rand = "0.8"
+
+# 自引用 dev-dependency（同 tma-plugin-host 的 aot-helper 手法）：让本 crate 的
+# 测试目标默认带上 `package` feature，`cargo test -p tma-plugin-sdk` 会跑到
+# .tmap 打包/验签单测（签名输入与 ZIP 条目顺序是改动最易失守的部分）。
+[dev-dependencies.tma-plugin-sdk-package-helper]
+package = "tma-plugin-sdk"
+path = "."
+features = ["package"]
+

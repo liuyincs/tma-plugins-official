@@ -9,6 +9,7 @@
 - `fanart_tv`：Fanart.tv 艺术家/专辑套图
 - `listenbrainz`：ListenBrainz scrobble / now playing 上报（非刮削来源）
 - `lastfm`：Last.fm 简介/图片/外部 ID + scrobble 上报与网页授权
+- `subsonic`：Subsonic/OpenSubsonic 只读适配器（`/rest/*` 入站 HTTP）
 
 发布约定：tag `<目录名>-v<semver>`（如 `template-v0.1.0`）触发 CI 构建、签名、
 创建 GitHub Release 并把条目回写 `catalog.json`（见

@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        dir: [spotify, apple_music, fanart_tv, listenbrainz, lastfm]
+        dir: [spotify, apple_music, fanart_tv, listenbrainz, lastfm, subsonic]
     steps:
       - uses: actions/checkout@v4
 

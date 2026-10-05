@@ -1,0 +1,38 @@
+{
+  "id": "tma.official.subsonic",
+  "name": "Subsonic / OpenSubsonic",
+  "version": "0.1.0",
+  "abi": {
+    "min": { "major": 1, "minor": 6 },
+    "max": { "major": 1, "minor": 6 }
+  },
+  "extension_points": ["http"],
+  "permissions": [
+    {
+      "capability": {
+        "name": "catalog.read",
+        "reason": "浏览用户可见的曲库目录"
+      }
+    },
+    {
+      "capability": {
+        "name": "identity.read",
+        "reason": "将 TMA 用户身份映射为外部客户端会话"
+      }
+    },
+    {
+      "capability": {
+        "name": "media.stream",
+        "reason": "为已授权曲目提供媒体流"
+      }
+    }
+  ],
+  "http": {
+    "routes": [
+      { "path": "/rest/ping", "methods": ["GET"] },
+      { "path": "/rest/getArtists", "methods": ["GET"] },
+      { "path": "/rest/stream", "methods": ["GET", "HEAD"] }
+    ]
+  },
+  "description": "Subsonic/OpenSubsonic 只读协议适配"
+}

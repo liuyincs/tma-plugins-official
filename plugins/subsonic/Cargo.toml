@@ -1,0 +1,25 @@
+# 独立可建：插件目录自带 workspace，不依赖任何上层 Cargo.toml。
+[workspace]
+members = ["."]
+resolver = "2"
+
+[package]
+name = "tma-plugin-subsonic"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# SDK 0.3.0（ABI 1.6：http 导出 + capability 宿主函数）尚未发布 crates.io，
+# 而 tma 主仓是私有仓库，本公开仓库不能以 git 依赖引用：临时 vendor 一份
+# 0.3.0 源码（vendor/tma-plugin-sdk，去掉 workspace lint 耦合）。SDK 0.3.0
+# 发布后、subsonic-v0.1.0 发 tag 前改回 tma-plugin-sdk = "0.3"、删除
+# vendor/ 并重建 Cargo.lock。
+tma-plugin-sdk = { path = "vendor/tma-plugin-sdk" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"

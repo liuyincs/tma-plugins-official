@@ -41,6 +41,10 @@ tma_plugin_sdk::plugin! {
     // event = f,    // 生成 tma_event 导出（ABI 1.3 起）
     // import = f,   // 生成 tma_playlist_import 导出（ABI 1.4 起）
     // ai_chat,      // 声明 ai_chat 宿主函数（与 import 独立，须写在最后）
+    // http = f,              // 生成 tma_http 导出（ABI 1.6 起）
+    // catalog_read = f,      // 声明 tma_catalog_read 宿主函数 + 生成读取助手（ABI 1.6 起）
+    // identity_read = f,     // 声明 tma_identity_read 宿主函数 + 生成读取助手（ABI 1.6 起）
+    // media_stream = f,      // 声明 tma_media_stream 宿主函数 + 生成读取助手（ABI 1.6 起）
 }
 ```
 
@@ -148,3 +152,6 @@ SemVer；其余字段用于展示与验签参考，未知字段忽略。用户�
 base64 ed25519 公钥）在编译内置的官方公钥之外**追加**信任，不做替换；
 验签失败的包一律拒绝安装/加载。发布第三方插件时把 `tma-plugin-dev pubkey`
 导出的公钥随包分发（如仓库根 `public-key.txt`），引导用户配置。
+
+入站 HTTP 插件（`http` 扩展点 + `capability` 权限 + `tma_http` 导出）的
+可参照实现见本仓 `plugins/subsonic`。
