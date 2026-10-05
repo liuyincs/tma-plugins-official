@@ -148,10 +148,23 @@ tma-plugin-dev --locked` → 用 secret `TMA_PLUGIN_SIGNING_KEY_B64` 签名打�
 SemVer；其余字段用于展示与验签参考，未知字段忽略。用户在「插件仓库」里
 添加 catalog 的 http(s) URL 即可浏览安装。
 
-第三方插件的用户侧信任：服务端环境变量 `TMA_PLUGIN_PUBKEYS`（逗号分隔的
-base64 ed25519 公钥）在编译内置的官方公钥之外**追加**信任，不做替换；
-验签失败的包一律拒绝安装/加载。发布第三方插件时把 `tma-plugin-dev pubkey`
-导出的公钥随包分发（如仓库根 `public-key.txt`），引导用户配置。
+第三方插件的用户侧信任绑定到仓库本身：管理员添加仓库时可先「探测」
+catalog——服务端抓取条目声明的 `public_key_url`、计算指纹并与
+`public_key_fingerprint` 比对，管理员确认无误后把该公钥登记到仓库。
+此后该仓库的包只认这些绑定公钥（外加全局兜底）；别的仓库的公钥绝不放行
+本仓库的包，反之亦然。撤销或轮换公钥在仓库编辑里整体替换数组即可，
+验签不再通过的已装插件会立即被卸下（台账与配置保留，可回滚公钥恢复）。
+
+因此第三方 catalog 应当随每个条目声明 `public_key_url` 与
+`public_key_fingerprint`（指纹口径见上段）：管理员探测时能看到
+「指纹相符」的绿色确认，而不是被迫手抄公钥。把 `tma-plugin-dev pubkey`
+导出的公钥放到一个稳定的 http(s) 地址（如仓库根 `public-key.txt`），
+把它的指纹写进条目。
+
+服务端环境变量 `TMA_PLUGIN_PUBKEYS`（逗号分隔的 base64 ed25519 公钥）
+仍然存在，但定位是全局兜底/轮换逃生口——它对所有来源（官方、各仓库、
+直接上传）都追加信任，不要把它当成第三方分发的常规路径。验签失败的包
+一律拒绝安装/加载。
 
 入站 HTTP 插件（`http` 扩展点 + `capability` 权限 + `tma_http` 导出）的
 可参照实现见本仓 `plugins/subsonic`。
