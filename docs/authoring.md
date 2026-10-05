@@ -159,7 +159,10 @@ catalog——服务端抓取条目声明的 `public_key_url`、计算指纹并�
 `public_key_fingerprint`（指纹口径见上段）：管理员探测时能看到
 「指纹相符」的绿色确认，而不是被迫手抄公钥。把 `tma-plugin-dev pubkey`
 导出的公钥放到一个稳定的 http(s) 地址（如仓库根 `public-key.txt`），
-把它的指纹写进条目。
+把它的指纹写进条目。注意 `public_key_url` 必须与 catalog 文件本身
+**同源**（scheme+host+port 一致、不能带 userinfo）——服务端防 SSRF
+限制跨源抓取，跨源托管的公钥探测时只会得到 `manual_required`，
+需要管理员手动粘贴。
 
 服务端环境变量 `TMA_PLUGIN_PUBKEYS`（逗号分隔的 base64 ed25519 公钥）
 仍然存在，但定位是全局兜底/轮换逃生口——它对所有来源（官方、各仓库、
