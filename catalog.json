@@ -162,6 +162,48 @@
       "sha256": "7d0af0302c86a15e51b6f3ac0a5153152bb7ef4f9afefeca1535dadfda16626e",
       "public_key_url": "https://raw.githubusercontent.com/liuyincs/tma-plugins-official/lastfm-v0.4.0/public-key.txt",
       "public_key_fingerprint": "sha256:aebbc3594c76ab3d22ee2baf806695671df1318df8c6f5a48b6257a42ec734a0"
+    },
+    {
+      "id": "tma.official.subsonic",
+      "name": "Subsonic / OpenSubsonic",
+      "version": "0.1.0",
+      "description": "只读 Subsonic/OpenSubsonic 适配器，支持目录浏览和曲目播放。",
+      "author": "TMA",
+      "homepage": "https://github.com/liuyincs/tma-plugins-official/tree/main/plugins/subsonic",
+      "abi": {
+        "min": {
+          "major": 1,
+          "minor": 6
+        },
+        "max": {
+          "major": 1,
+          "minor": 6
+        }
+      },
+      "permissions": [
+        {
+          "capability": {
+            "name": "catalog.read",
+            "reason": "浏览当前用户可见的音乐目录"
+          }
+        },
+        {
+          "capability": {
+            "name": "identity.read",
+            "reason": "将 Subsonic 客户端认证映射到当前用户"
+          }
+        },
+        {
+          "capability": {
+            "name": "media.stream",
+            "reason": "播放当前用户可见的曲目"
+          }
+        }
+      ],
+      "download_url": "https://github.com/liuyincs/tma-plugins-official/releases/download/subsonic-v0.1.0/subsonic.tmap",
+      "sha256": "75e3099d98d95ea54a2064dbb58053675d9b95eeaf92ac25a6b4d0f3cbc20953",
+      "public_key_url": "https://raw.githubusercontent.com/liuyincs/tma-plugins-official/subsonic-v0.1.0/public-key.txt",
+      "public_key_fingerprint": "sha256:aebbc3594c76ab3d22ee2baf806695671df1318df8c6f5a48b6257a42ec734a0"
     }
   ]
 }
