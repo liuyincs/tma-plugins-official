@@ -36,18 +36,25 @@
 //!   `Unsupported`，业务 `Err` 由插件侧折叠为非零退出码（与
 //!   `tma_playlist_import` 同口径），宿主侧只见调用失败；
 //! - instance-per-call：每次导出调用都新建 extism 实例（宿主同语义）；
-//! - **刻意不复现**：manifest `permissions` 的逐次权限门（capability 桩只
-//!   保证「声明过的注入会命中」）、真实认证（`PluginHttpRequest.identity`
-//!   与 `tma_identity_read` 应答都由测试注入）、媒体文件读取与 Range 字节
-//!   切片/转码（media 桩返回什么就透传什么）、3xx 重定向跟随、fuel/epoch
-//!   打断——stub 代理是唯一的出站注入点，未命中路由直接以
-//!   `code:"network"` 显式报错（与宿主 `ProxyHttpError::Network` 同码同文）。
+//! - 签名包路径按 manifest `permissions` 复现逐次 capability 权限门：
+//!   `from_verified_with_capabilities` 从 `verified.manifest` 提取声明过的
+//!   capability 名集合，宿主函数在派发前对未声明的 capability 直接返回
+//!   宿主级 `Err`（请求不进入桩派发、不留痕）——清单漏声明/误删
+//!   `catalog.read`/`identity.read`/`media.stream` 会在发布前测试期暴露，
+//!   而不是到真实宿主才被拒；`from_wasm*` 无清单路径保持全放行；
+//! - **刻意不复现**：`http_request` 出站的 manifest `http` 权限 URL 白名单
+//!   （由 stub 代理的路由表承担「放行什么」）、真实认证
+//!   （`PluginHttpRequest.identity` 与 `tma_identity_read` 应答都由测试
+//!   注入）、媒体文件读取与 Range 字节切片/转码（media 桩返回什么就透传
+//!   什么）、3xx 重定向跟随、fuel/epoch 打断——stub 代理是唯一的出站
+//!   注入点，未命中路由直接以 `code:"network"` 显式报错（与宿主
+//!   `ProxyHttpError::Network` 同码同文）。
 //!
 //! `TEST_SIGNING_KEY_B64` 是测试专用密钥对（生成后即冻结）。它只服务本仓
 //! 验收测试的自洽链路，**不是任何环境的真实签名私钥**，也绝不应被配置为
 //! 宿主受信公钥。
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::panic::AssertUnwindSafe;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -495,12 +502,46 @@ impl CapabilityStub {
 // 宿主函数桩（注册到 extism 默认 `extism:host/user` 命名空间）
 // ---------------------------------------------------------------------------
 
-/// 宿主函数 user data：stub 代理 + capability 桩 + 注入的运行时配置 JSON。
+/// 宿主函数 user data：stub 代理 + capability 桩 + 注入的运行时配置 JSON +
+/// 清单声明的 capability 授权集合。
 #[derive(Clone)]
 struct HostFnState {
     proxy: Arc<StubProxy>,
     capabilities: Arc<CapabilityStub>,
     runtime_config: Arc<str>,
+    /// `Some` = 验签包路径，只放行 manifest `permissions` 声明过的
+    /// capability；`None` = 无清单路径（`from_wasm*`），全部放行。
+    granted: Option<Arc<BTreeSet<String>>>,
+}
+
+/// `capability` 权限门前的判定：`granted` 为 `Some` 时未声明的 capability
+/// 名以宿主级 `Err` 拒绝（与宿主 per-call 权限门同语义——插件侧 SDK 助手
+/// 拿到 `Err`，调用方拿到 Internal + 错误链）；`None` 放行。
+fn check_capability_grant(
+    state: &HostFnState,
+    fn_name: &str,
+    capability: &str,
+) -> Result<(), extism::Error> {
+    match &state.granted {
+        Some(granted) if !granted.contains(capability) => Err(extism::Error::msg(format!(
+            "{fn_name}: manifest 未声明 capability '{capability}'（宿主权限门拒绝）"
+        ))),
+        _ => Ok(()),
+    }
+}
+
+/// 从清单提取声明过的 capability 名集合（`permissions[].capability.name`），
+/// 作为验签包路径逐次权限门的放行集；`http`/`ai` 权限不映射到 capability
+/// 宿主函数。
+fn granted_capabilities(manifest: &PluginManifest) -> BTreeSet<String> {
+    manifest
+        .permissions
+        .iter()
+        .filter_map(|permission| match permission {
+            tma_plugin_sdk::Permission::Capability { name, .. } => Some(name.clone()),
+            _ => None,
+        })
+        .collect()
 }
 
 /// `http_request`（I64 offset 入 → I64 offset 出）：入参/出参映射与宿主
@@ -628,6 +669,7 @@ fn capability_json_call<Req, Resp>(
     output: &mut [Val],
     user_data: UserData<HostFnState>,
     name: &'static str,
+    capability: &'static str,
     dispatch: impl FnOnce(&HostFnState, Req) -> Result<Resp, extism::Error>,
 ) -> Result<(), extism::Error>
 where
@@ -642,6 +684,10 @@ where
                 .map(|guard| guard.clone())
         })
         .map_err(|e| extism::Error::msg(format!("{name}: user data 不可用: {e}")))?;
+    // 逐次权限门：验签包路径只放行清单声明过的 capability（被门拒绝的请求
+    // 不进入桩派发、不计入请求留痕——与宿主把权限检查放在 provider 之前
+    // 的语义一致）。
+    check_capability_grant(&state, name, capability)?;
     let offset = match input.first().and_then(|v| v.i64()) {
         Some(o) if o > 0 => o as u64,
         _ => return Err(extism::Error::msg(format!("{name} 需要 i64 入参 offset"))),
@@ -689,6 +735,7 @@ fn tma_catalog_read_host_fn(
         output,
         user_data,
         "tma_catalog_read",
+        "catalog.read",
         |state, req| state.capabilities.dispatch_catalog(req),
     )
 }
@@ -707,6 +754,7 @@ fn tma_identity_read_host_fn(
         output,
         user_data,
         "tma_identity_read",
+        "identity.read",
         |state, req| state.capabilities.dispatch_identity(req),
     )
 }
@@ -725,6 +773,7 @@ fn tma_media_stream_host_fn(
         output,
         user_data,
         "tma_media_stream",
+        "media.stream",
         |state, req| state.capabilities.dispatch_media(req),
     )
 }
@@ -862,16 +911,30 @@ impl LoadedPlugin {
 
     /// `from_wasm` 的 capability 变体：额外注入 [`CapabilityStub`] 应答
     /// `tma_catalog_read`/`tma_identity_read`/`tma_media_stream`。
+    ///
+    /// 裸 wasm 路径不带清单，capability 权限门全放行；要复现「清单未声明
+    /// 的 capability 被宿主拒」请走验签包路径（[`Self::from_verified_with_capabilities`]）。
     pub fn from_wasm_with_capabilities(
         wasm: &[u8],
         runtime_config: &str,
         proxy: Arc<StubProxy>,
         capabilities: Arc<CapabilityStub>,
     ) -> Result<Self, PluginError> {
+        Self::from_wasm_inner(wasm, runtime_config, proxy, capabilities, None)
+    }
+
+    fn from_wasm_inner(
+        wasm: &[u8],
+        runtime_config: &str,
+        proxy: Arc<StubProxy>,
+        capabilities: Arc<CapabilityStub>,
+        granted: Option<Arc<BTreeSet<String>>>,
+    ) -> Result<Self, PluginError> {
         let state = HostFnState {
             proxy,
             capabilities,
             runtime_config: Arc::from(runtime_config),
+            granted,
         };
         let functions = vec![
             Function::new(
@@ -922,7 +985,9 @@ impl LoadedPlugin {
     }
 
     /// 验签包 → 实例化 → `tma_manifest` 探测比对（存在导出即须与包内清单一致，
-    /// 与宿主 `load_verified` 同语义）。capability 桩取全未配置空桩。
+    /// 与宿主 `load_verified` 同语义）。capability 桩取全未配置空桩；
+    /// 逐次 capability 权限门按清单 `permissions` 生效（见
+    /// [`Self::from_verified_with_capabilities`]）。
     pub fn from_verified(
         verified: &VerifiedPlugin,
         runtime_config: &str,
@@ -936,15 +1001,23 @@ impl LoadedPlugin {
         )
     }
 
-    /// `from_verified` 的 capability 变体（见 [`Self::from_wasm_with_capabilities`]）。
+    /// `from_verified` 的 capability 变体：除 [`Self::from_wasm_with_capabilities`]
+    /// 的行为外，还按 `verified.manifest` 的 `permissions` 复现逐次
+    /// capability 权限门——插件调用清单未声明的 capability 时宿主函数返回
+    /// `Err`（整个导出调用失败），与真实宿主同口径。
     pub fn from_verified_with_capabilities(
         verified: &VerifiedPlugin,
         runtime_config: &str,
         proxy: Arc<StubProxy>,
         capabilities: Arc<CapabilityStub>,
     ) -> Result<Self, PluginError> {
-        let plugin =
-            Self::from_wasm_with_capabilities(&verified.wasm, runtime_config, proxy, capabilities)?;
+        let plugin = Self::from_wasm_inner(
+            &verified.wasm,
+            runtime_config,
+            proxy,
+            capabilities,
+            Some(Arc::new(granted_capabilities(&verified.manifest))),
+        )?;
         if let Some(exported) = plugin.probe_manifest()?
             && verified.manifest != exported
         {
@@ -1292,5 +1365,66 @@ mod tests {
             .unwrap();
         assert!(resp.ok);
         assert_eq!(stub.media_requests().len(), 2, "未命中也留痕");
+    }
+
+    /// 权限门放行集只收 `capability` 类权限，`http`/`ai` 不影响。
+    #[test]
+    fn granted_capabilities_extracts_capability_permissions_only() {
+        let manifest: PluginManifest = serde_json::from_str(
+            r#"{
+                "id": "tma.test.echo",
+                "name": "Echo",
+                "version": "0.1.0",
+                "abi": { "min": { "major": 1, "minor": 0 }, "max": { "major": 1, "minor": 6 } },
+                "extension_points": ["scrape_provider"],
+                "scrape": {
+                    "provider": "echo_images",
+                    "capabilities": ["image"],
+                    "requires_credentials": false
+                },
+                "permissions": [
+                    { "capability": { "name": "catalog.read", "reason": "r" } },
+                    { "capability": { "name": "media.stream", "reason": "r" } },
+                    { "http": { "host": "example.com", "reason": "r" } }
+                ]
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(
+            granted_capabilities(&manifest),
+            ["catalog.read", "media.stream"]
+                .into_iter()
+                .map(String::from)
+                .collect()
+        );
+    }
+
+    /// 逐次权限门：验签包路径（granted=Some）对清单未声明的 capability 返回
+    /// 宿主级 `Err`；裸 wasm 路径（granted=None）保持放行。
+    #[test]
+    fn capability_grant_gate_denies_undeclared() {
+        let state = |granted: Option<BTreeSet<String>>| HostFnState {
+            proxy: StubProxy::new(vec![]),
+            capabilities: CapabilityStub::new(),
+            runtime_config: Arc::from("{}"),
+            granted: granted.map(Arc::new),
+        };
+        let declared: BTreeSet<String> = ["catalog.read".to_string()].into_iter().collect();
+
+        assert!(
+            check_capability_grant(
+                &state(Some(declared.clone())),
+                "tma_catalog_read",
+                "catalog.read"
+            )
+            .is_ok()
+        );
+        let err =
+            check_capability_grant(&state(Some(declared)), "tma_media_stream", "media.stream")
+                .unwrap_err();
+        assert!(err.to_string().contains("media.stream"), "{err}");
+        assert!(err.to_string().contains("tma_media_stream"), "{err}");
+        // 无清单路径（from_wasm*）不做权限门。
+        assert!(check_capability_grant(&state(None), "tma_media_stream", "media.stream").is_ok());
     }
 }

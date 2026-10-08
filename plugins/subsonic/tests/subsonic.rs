@@ -230,6 +230,11 @@ fn signed_package_loads_and_ping_ok_in_both_envelopes() {
 
 /// `tma_identity_read` 应答 ok=false → 已认证端点回 failed 封套 error 50，
 /// 且不再发起 catalog/media 调用。
+///
+/// 注：Subsonic 规范里「认证失败」是 error 40、50 是「已认证但无权执行」。
+/// 本适配器的语义是宿主侧已完成传输层认证、tma 身份缺失，取 50（无权）
+/// 是协议层有意之选；本断言锁定的是当前可观测行为，协议层日后改码时
+/// 同步更新断言即可。
 #[test]
 fn unauthenticated_identity_fails_50_without_catalog_or_media_calls() {
     let stub =
@@ -255,6 +260,10 @@ fn unauthenticated_identity_fails_50_without_catalog_or_media_calls() {
 
 /// 协议校验在身份检查之前：缺 `v` → error 10；`v` 超过 1.16.1 或出现未知
 /// 参数 → error 0。已认证但未知的端点 → error 0（身份调用照常发生）。
+///
+/// 注：Subsonic 规范对「客户端声明的版本高于服务端」规定 error 30，本
+/// 适配器统一回 0（generic）；锁定现状而非规范码——协议层改 30 时此处
+/// 同步更新断言。
 #[test]
 fn protocol_validation_rejects_bad_params() {
     let stub = CapabilityStub::authenticated("u-1", "alice", false);
@@ -633,4 +642,195 @@ fn cover_art_prefixes_media_id_and_passes_content_type() {
         .map(|req| req.media_id)
         .collect();
     assert_eq!(ids, ["cover:abc", "cover:x", "track:9", "artist:7"]);
+}
+
+/// `getUser`：登录后的身份回显——分发前的身份检查 + 端点内再取
+/// username/is_admin，一次请求共两次 `tma_identity_read`；角色映射为
+/// 只读适配器档位（admin/settings 随宿主 is_admin，无写角色）。
+#[test]
+fn get_user_echoes_identity_and_readonly_roles() {
+    let stub = CapabilityStub::authenticated("u-1", "alice", true);
+    let plugin = load(stub.clone());
+
+    let resp = plugin
+        .call_http(get(
+            "/rest/getUser.view",
+            &[("v", SUBSONIC_VERSION), ("username", "alice")],
+        ))
+        .unwrap();
+    let body = body_text(&resp);
+    assert!(body.contains("status=\"ok\""), "{body}");
+    assert!(
+        body.contains("<user username=\"alice\" adminRole=\"true\" settingsRole=\"true\""),
+        "{body}"
+    );
+    assert!(body.contains("uploadRole=\"false\""), "{body}");
+    assert!(body.contains("streamRole=\"true\""), "{body}");
+
+    assert_eq!(
+        stub.identity_requests().len(),
+        2,
+        "分发与端点实现各查一次身份"
+    );
+    assert!(stub.catalog_requests().is_empty() && stub.media_requests().is_empty());
+}
+
+/// `getArtist` = 两次 catalog 调用：artist by id → album by parent_id。
+#[test]
+fn get_artist_chains_detail_then_albums() {
+    let mut album = catalog_item("al-9", "album", "The Downward Spiral");
+    album.artist = Some("Nine Inch Nails".into());
+    album.year = Some(1994);
+    let stub = CapabilityStub::authenticated("u-1", "alice", false)
+        .with_catalog(
+            CatalogMatch::kind("artist").and_id("ar-9"),
+            catalog_ok(vec![catalog_item("ar-9", "artist", "Nine Inch Nails")]),
+        )
+        .with_catalog(
+            CatalogMatch::kind("album").and_parent_id("ar-9"),
+            catalog_ok(vec![album]),
+        );
+    let plugin = load(stub.clone());
+
+    let resp = plugin
+        .call_http(get(
+            "/rest/getArtist.view",
+            &[("v", SUBSONIC_VERSION), ("id", "ar-9")],
+        ))
+        .unwrap();
+    let body = body_text(&resp);
+    assert!(
+        body.contains("<artist id=\"ar-9\" name=\"Nine Inch Nails\" albumCount=\"1\">"),
+        "{body}"
+    );
+    assert!(body.contains("<album id=\"al-9\""), "{body}");
+
+    let reqs = stub.catalog_requests();
+    assert_eq!(reqs.len(), 2);
+    assert_eq!(reqs[0].kind.as_deref(), Some("artist"));
+    assert_eq!(reqs[0].id.as_deref(), Some("ar-9"));
+    assert_eq!(reqs[0].limit, 1);
+    assert_eq!(reqs[1].kind.as_deref(), Some("album"));
+    assert_eq!(reqs[1].parent_id.as_deref(), Some("ar-9"));
+    assert_eq!(reqs[1].limit, 500);
+}
+
+/// `getAlbumList`/`getAlbumList2`：size→limit、offset→cursor，XML 封套键
+/// 随端点区分；`type` 接受但不改变宿主排序；过滤类参数明示拒绝且不发起
+/// 目录调用。
+#[test]
+fn album_lists_map_size_offset_and_reject_filters() {
+    let mut album = catalog_item("al-1", "album", "Album One");
+    album.year = Some(1973);
+    let stub = CapabilityStub::authenticated("u-1", "alice", false)
+        .with_catalog(CatalogMatch::kind("album"), catalog_ok(vec![album]));
+    let plugin = load(stub.clone());
+
+    let resp = plugin
+        .call_http(get(
+            "/rest/getAlbumList.view",
+            &[
+                ("v", SUBSONIC_VERSION),
+                ("type", "newest"),
+                ("size", "7"),
+                ("offset", "3"),
+            ],
+        ))
+        .unwrap();
+    let body = body_text(&resp);
+    assert!(body.contains("<albumList><album id=\"al-1\""), "{body}");
+
+    let resp = plugin
+        .call_http(get(
+            "/rest/getAlbumList2.view",
+            &[("v", SUBSONIC_VERSION), ("type", "alphabeticalByName")],
+        ))
+        .unwrap();
+    assert!(body_text(&resp).contains("<albumList2>"), "{resp:?}");
+
+    let reqs = stub.catalog_requests();
+    assert_eq!(reqs.len(), 2);
+    assert_eq!(reqs[0].kind.as_deref(), Some("album"));
+    assert_eq!(reqs[0].limit, 7);
+    assert_eq!(reqs[0].cursor.as_deref(), Some("3"));
+    assert!(reqs[1].cursor.is_none(), "offset=0 不出 cursor");
+
+    let resp = plugin
+        .call_http(get(
+            "/rest/getAlbumList.view",
+            &[("v", SUBSONIC_VERSION), ("genre", "Rock")],
+        ))
+        .unwrap();
+    assert_xml_failed(&resp, 0);
+    assert!(body_text(&resp).contains("genre"));
+    assert_eq!(
+        stub.catalog_requests().len(),
+        2,
+        "过滤拒绝发生在目录调用之前"
+    );
+}
+
+/// `getCoverArt` 带 `size`：当前实现明示拒绝（error 0）且不发起媒体
+/// 调用——多数客户端取封面都会带 size，把「不支持缩放」固化为可观测
+/// 行为，协议层日后支持时同步更新断言。
+#[test]
+fn cover_art_rejects_size_before_media_call() {
+    let stub = CapabilityStub::authenticated("u-1", "alice", false).with_media(
+        MediaMatch::default(),
+        media_ok(200, "image/jpeg", Some(base64_encode(b"IMG"))),
+    );
+    let plugin = load(stub.clone());
+
+    let resp = plugin
+        .call_http(get(
+            "/rest/getCoverArt.view",
+            &[("v", SUBSONIC_VERSION), ("id", "abc"), ("size", "300")],
+        ))
+        .unwrap();
+    assert_xml_failed(&resp, 0);
+    assert!(body_text(&resp).contains("size"));
+    assert_eq!(stub.identity_requests().len(), 1);
+    assert!(
+        stub.media_requests().is_empty(),
+        "size 拒绝发生在媒体调用之前"
+    );
+}
+
+/// manifest 删掉 capability 权限后重新打包：包内清单与 wasm 内嵌清单
+/// 不一致，验签后加载被拒。
+///
+/// 签名包结构保证两份清单必然一致，构造不出「清单缺权限但 wasm 照常
+/// 调用」的包——那种一致缺权的形态（manifest.json 改后重建 wasm）由
+/// testkit 逐次权限门在调用期拦截（`capability_grant_gate_denies_undeclared`
+/// 单测覆盖）；本用例验证篡改路径在加载期即被拦下。
+#[test]
+fn manifest_dropping_capability_is_rejected_at_load() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let wasm = std::fs::read(testkit::ensure_wasm_built(dir)).expect("读 wasm 产物失败");
+    let mut manifest: Value = serde_json::from_str(include_str!("../manifest.json"))
+        .expect("manifest.json 应为合法 JSON");
+    manifest["permissions"]
+        .as_array_mut()
+        .expect("permissions 应为数组")
+        .retain(|entry| entry["capability"]["name"].as_str() != Some("media.stream"));
+    let manifest: testkit::PluginManifest =
+        serde_json::from_value(manifest).expect("裁剪后的清单应仍合法");
+    let verified = testkit::VerifiedPlugin {
+        manifest_bytes: serde_json::to_vec(&manifest).unwrap(),
+        manifest,
+        wasm,
+        icon: None,
+    };
+
+    let result = testkit::LoadedPlugin::from_verified_with_capabilities(
+        &verified,
+        "{}",
+        StubProxy::new(vec![]),
+        CapabilityStub::authenticated("u-1", "alice", false),
+    );
+    let err = match result {
+        Err(err) => err,
+        Ok(_) => panic!("应被清单一致性拒绝"),
+    };
+    assert!(err.message.contains("清单"), "应被清单一致性拒绝: {err:?}");
 }
