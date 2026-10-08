@@ -1,9 +1,10 @@
 name: Test
 
 # push 到 main 与全部 PR：各插件独立 workspace 内跑 wasm 构建 + 全量测试
-# （tests/ 验收测试驱动真实签名包 + stub 出站；listenbrainz/lastfm 的
-# scrobble 纯逻辑单测随 `cargo test` 一并跑）。testkit 是共享测试件，自测
-# 与 check 单独一个 job，不进插件 matrix。
+# （tests/ 验收测试驱动真实签名包 + stub 出站/capability 桩；subsonic 另
+# 覆盖 tma_http 入站链路，listenbrainz/lastfm 的 scrobble 纯逻辑单测随
+# `cargo test` 一并跑）。testkit 是共享测试件，自测与 check 单独一个
+# job，不进插件 matrix。
 on:
   push:
     branches: [main]
