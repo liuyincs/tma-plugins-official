@@ -505,10 +505,8 @@ fn pick_best_search_match(body: &Value, query_name: &str) -> Option<(String, f32
             .filter(|s| !s.is_empty())
             .map(str::to_string);
         let Some(mbid) = mbid else { continue };
-        if sim >= CONFIDENCE_THRESHOLD {
-            if best.as_ref().is_none_or(|(_, b)| sim > *b) {
-                best = Some((mbid, sim));
-            }
+        if sim >= CONFIDENCE_THRESHOLD && best.as_ref().is_none_or(|(_, b)| sim > *b) {
+            best = Some((mbid, sim));
         }
     }
     best
@@ -630,10 +628,8 @@ fn pick_best_album_search_match(
             .map(|qa| name_similarity(qa, artist))
             .unwrap_or(1.0);
         let sim = (album_sim + artist_sim) / 2.0;
-        if sim >= CONFIDENCE_THRESHOLD {
-            if best.as_ref().is_none_or(|(_, _, b)| sim > *b) {
-                best = Some((artist.to_string(), name.to_string(), sim));
-            }
+        if sim >= CONFIDENCE_THRESHOLD && best.as_ref().is_none_or(|(_, _, b)| sim > *b) {
+            best = Some((artist.to_string(), name.to_string(), sim));
         }
     }
     best
