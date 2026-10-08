@@ -2,9 +2,9 @@ name: Release plugin
 
 # 一个插件一个 tag：`<dir>-v<semver>`，<dir> 即 plugins/ 下的目录名。
 # 例：发布 plugins/template 的 0.1.0 → 推送 tag `template-v0.1.0`。
-# 流程：构建 wasm → cargo install tma-plugin-dev → 用 secrets 里的官方
-# 签名私钥 pack → gh release create 挂 .tmap/.sha256 → update-catalog.py
-# 回写 catalog.json 并提交回 main。
+# 流程：构建 wasm → cargo install tma-plugin-dev（固定 0.3.0）→ 用 secrets
+# 里的官方签名私钥 pack → gh release create 挂 .tmap/.sha256 →
+# update-catalog.py 回写 catalog.json 并提交回 main。
 
 on:
   push:
@@ -52,7 +52,7 @@ jobs:
         run: cargo test --manifest-path "plugins/${{ steps.meta.outputs.dir }}/Cargo.toml"
 
       - name: 安装 tma-plugin-dev
-        run: cargo install tma-plugin-dev --locked
+        run: cargo install tma-plugin-dev --version 0.3.0 --locked
 
       - name: 签名打包
         env:
@@ -85,12 +85,8 @@ jobs:
           git checkout -B main FETCH_HEAD
           # 官方签名公钥从 secret 私钥派生（人手不接触生产私钥）；密钥不变时
           # 重写内容相同，git add 后无 diff 即不纳入提交。
-          # tma-plugin-dev 两代 CLI：新走 env，旧（crates.io 0.1.x）只认位置参数。
-          if tma-plugin-dev 2>&1 | grep -q '<privkey_b64>'; then
-            tma-plugin-dev pubkey "$TMA_PLUGIN_SIGNING_KEY_B64" > public-key.txt
-          else
-            tma-plugin-dev pubkey > public-key.txt
-          fi
+          # tma-plugin-dev 0.3 起私钥只走 TMA_PLUGIN_SIGNING_KEY_B64 / --key-file。
+          tma-plugin-dev pubkey > public-key.txt
           python3 scripts/update-catalog.py "plugins/$PLUGIN_DIR" --version "$VERSION" --tag "$TAG"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

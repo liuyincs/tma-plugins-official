@@ -12,7 +12,9 @@
 # 环境：
 #   TMA_PLUGIN_SIGNING_KEY_B64  base64 ed25519 发布私钥（必填；CI secret 注入，绝不入库）
 #   TMA_PLUGIN_DEV              tma-plugin-dev 命令（可含参数，如
-#                               "cargo run -p tma-plugin-dev --"；缺省 PATH 中的 tma-plugin-dev）
+#                               "cargo run -p tma-plugin-dev --"；缺省 PATH 中的
+#                               tma-plugin-dev；覆盖的命令须兼容 0.3 CLI——
+#                               私钥走 env / --key-file，不接受位置参数）
 set -eu
 
 : "${TMA_PLUGIN_SIGNING_KEY_B64:?set TMA_PLUGIN_SIGNING_KEY_B64 to a release-only Ed25519 seed}"
@@ -41,16 +43,9 @@ wasm="$dir/target/wasm32-unknown-unknown/release/$(printf '%s' "$crate" | tr '-'
 
 mkdir -p "$dir/dist"
 cp "$wasm" "$dir/plugin.wasm"
-# tma-plugin-dev 的私钥入口有两代 CLI（按 usage 文本判别一次）：
-#   新：pack <dir> [-o out]（私钥走 TMA_PLUGIN_SIGNING_KEY_B64 / --key-file）
-#   旧（crates.io 0.1.x）：pack <dir> <privkey_b64> [-o out]，只认位置参数
-# 旧 CLI 会把私钥放上 argv——只是过渡兼容，新版发布后走 env 分支。
-# 注：$TMA_PLUGIN_DEV 刻意不加引号（允许 "cargo run -p … --" 形态）。
-if $TMA_PLUGIN_DEV 2>&1 | grep -q '<privkey_b64>'; then
-  $TMA_PLUGIN_DEV pack "$dir" "$TMA_PLUGIN_SIGNING_KEY_B64" -o "$dir/dist/$name.tmap"
-else
-  $TMA_PLUGIN_DEV pack "$dir" -o "$dir/dist/$name.tmap"
-fi
+# tma-plugin-dev 0.3 CLI：私钥走 TMA_PLUGIN_SIGNING_KEY_B64（上文已必填校验），
+# 不进 argv。$TMA_PLUGIN_DEV 刻意不加引号（允许 "cargo run -p … --" 形态）。
+$TMA_PLUGIN_DEV pack "$dir" -o "$dir/dist/$name.tmap"
 # sha256 与被校验文件同目录、记相对名，便于 Release 页直接对照。
 if command -v sha256sum >/dev/null 2>&1; then
   (cd "$dir/dist" && sha256sum "$name.tmap" > "$name.tmap.sha256")
