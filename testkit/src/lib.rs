@@ -26,11 +26,14 @@
 //! - `tma_config` 宿主函数：无参，原样返回调用方注入的 config JSON 字符串；
 //! - `tma_catalog_read`/`tma_identity_read`/`tma_media_stream` 宿主函数
 //!   （ABI 1.6 capability）：与 `http_request` 同一 offset/JSON 往返协议，
-//!   注入面是 [`CapabilityStub`]——catalog/media 走「字段匹配 → 响应」路由表
-//!   （首个命中优先），identity 是单值槽；每次调用都先记录完整请求 DTO 再
-//!   派发。未配置或未命中的调用以宿主函数级 `Err` 失败（整个导出调用当场
-//!   失败，不是 `ok:false` DTO）：与宿主「逐次权限门拒绝」同属默认拒绝
-//!   语义，也保证测试不会把桩缺配置误读成已配置的业务失败；
+//!   校验顺序与宿主 `capability_fns.rs` 逐字段一致（入参/版本/字段/
+//!   权限门失败都写回结构化错误 DTO，不 trap）。注入面是
+//!   [`CapabilityStub`]——catalog/media 走「字段匹配 → 响应」路由表
+//!   （首个命中优先），identity 是单值槽；进入桩派发的每次调用都先记录
+//!   完整请求 DTO 再匹配。刻意的差异：桩未配置或未命中（即「夹具没有为
+//!   该请求编排响应」）以宿主函数级 `Err` 失败（整个导出调用当场失败），
+//!   保证测试不会把桩缺配置误读成已配置的业务失败——宿主侧对应的
+//!   provider-未注入语义是 `unavailable` DTO，testkit 的桩恒存在；
 //! - `tma_http` 入站 HTTP 导出经 [`LoadedPlugin::call_http`] 驱动：
 //!   `PluginHttpRequest` JSON 进、`PluginHttpResponse` JSON 出；无导出 →
 //!   `Unsupported`，业务 `Err` 由插件侧折叠为非零退出码（与
@@ -38,10 +41,10 @@
 //! - instance-per-call：每次导出调用都新建 extism 实例（宿主同语义）；
 //! - 签名包路径按 manifest `permissions` 复现逐次 capability 权限门：
 //!   `from_verified_with_capabilities` 从 `verified.manifest` 提取声明过的
-//!   capability 名集合，宿主函数在派发前对未声明的 capability 直接返回
-//!   宿主级 `Err`（请求不进入桩派发、不留痕）——清单漏声明/误删
-//!   `catalog.read`/`identity.read`/`media.stream` 会在发布前测试期暴露，
-//!   而不是到真实宿主才被拒；`from_wasm*` 无清单路径保持全放行；
+//!   capability 名集合；校验顺序与宿主 `capability_fns.rs` 一致（入参 →
+//!   DTO 版本 → 字段校验 → 权限门 → 派发），未声明的 capability 写回
+//!   `ok:false` + `forbidden` 应答（media 为 403），不 trap——插件侧收到
+//!   与真实宿主相同的可处理错误；`from_wasm*` 无清单路径保持全放行；
 //! - **刻意不复现**：`http_request` 出站的 manifest `http` 权限 URL 白名单
 //!   （由 stub 代理的路由表承担「放行什么」）、真实认证
 //!   （`PluginHttpRequest.identity` 与 `tma_identity_read` 应答都由测试
@@ -514,19 +517,63 @@ struct HostFnState {
     granted: Option<Arc<BTreeSet<String>>>,
 }
 
-/// `capability` 权限门前的判定：`granted` 为 `Some` 时未声明的 capability
-/// 名以宿主级 `Err` 拒绝（与宿主 per-call 权限门同语义——插件侧 SDK 助手
-/// 拿到 `Err`，调用方拿到 Internal + 错误链）；`None` 放行。
-fn check_capability_grant(
-    state: &HostFnState,
-    fn_name: &str,
-    capability: &str,
-) -> Result<(), extism::Error> {
-    match &state.granted {
-        Some(granted) if !granted.contains(capability) => Err(extism::Error::msg(format!(
-            "{fn_name}: manifest 未声明 capability '{capability}'（宿主权限门拒绝）"
-        ))),
-        _ => Ok(()),
+/// capability 权限门前的判定（对应宿主 `gate::capability_allowed`）：
+/// `granted` 为 `Some` 时放行清单声明过的 capability 名；`None`（裸 wasm
+/// 路径）全放行。
+fn capability_denied(state: &HostFnState, capability: &str) -> bool {
+    state
+        .granted
+        .as_ref()
+        .is_some_and(|granted| !granted.contains(capability))
+}
+
+/// capability 应答 DTO 的统一构造面：宿主对入参损坏、DTO 版本不符、权限
+/// 门拒绝、provider 未注入/panic 等前置失败一律**写回结构化错误应答**
+/// （`ok:false` + `CapabilityError`），不 trap 导出调用。`status` 仅
+/// `MediaStreamResponse` 使用（与宿主 `media_error` 同口径），
+/// catalog/identity 应答忽略该参数。
+trait CapabilityReply: serde::Serialize {
+    fn error_response(version: u16, status: u16, code: &str, message: String) -> Self;
+}
+
+impl CapabilityReply for CatalogReadResponse {
+    fn error_response(version: u16, _status: u16, code: &str, message: String) -> Self {
+        Self {
+            version,
+            ok: false,
+            items: vec![],
+            next_cursor: None,
+            error: Some(CapabilityError::new(code, message)),
+        }
+    }
+}
+
+impl CapabilityReply for IdentityReadResponse {
+    fn error_response(version: u16, _status: u16, code: &str, message: String) -> Self {
+        Self {
+            version,
+            ok: false,
+            user_id: None,
+            username: None,
+            is_admin: false,
+            error: Some(CapabilityError::new(code, message)),
+        }
+    }
+}
+
+impl CapabilityReply for MediaStreamResponse {
+    fn error_response(version: u16, status: u16, code: &str, message: String) -> Self {
+        Self {
+            version,
+            ok: false,
+            status,
+            content_type: None,
+            content_length: None,
+            content_range: None,
+            body_b64: None,
+            stream_id: None,
+            error: Some(CapabilityError::new(code, message)),
+        }
     }
 }
 
@@ -657,24 +704,27 @@ fn tma_config_host_fn(
 }
 
 /// capability 宿主函数的公共协议段（`extism_pdk::Json` 包装 = i64 offset 进、
-/// i64 offset 出，与 `http_request` 同一跨边界协议）：i64 offset → UTF-8 JSON
-/// 入参 → `dispatch` → JSON 响应 → 写回新 offset。
+/// i64 offset 出，与 `http_request` 同一跨边界协议），与宿主
+/// `capability_fns.rs` 同骨架：i64 offset → UTF-8 JSON 入参 → `respond` →
+/// JSON 响应 → 写回新 offset。
 ///
-/// 与 `http_request` 的差异：capability 响应 DTO 没有统一的 ok:false 兜底
-/// 通道，这里所有失败（边界损坏 / 桩未配置 / 桩未命中）都以宿主函数级
-/// `Err` 返回——导出调用当场失败，`call_*` 拿到 Internal + 完整错误链。
+/// 与宿主同口径：入参读取/解析失败不 trap，而是把 `Err(message)` 交给
+/// `respond`，由各应答构造器写成 `bad_request` DTO；状态不可用写回
+/// `internal` DTO。与宿主的刻意差异只剩两处测试边界：桩未配置/未命中的
+/// 请求仍走宿主级 `Err`（大声暴露夹具缺配置，而非宿主 `unavailable`
+/// DTO——testkit 的桩即 provider，始终存在），桩 panic 同样兜底为 `Err`
+/// （宿主对应 `internal` DTO）。
 fn capability_json_call<Req, Resp>(
     plugin: &mut CurrentPlugin,
     input: &[Val],
     output: &mut [Val],
     user_data: UserData<HostFnState>,
     name: &'static str,
-    capability: &'static str,
-    dispatch: impl FnOnce(&HostFnState, Req) -> Result<Resp, extism::Error>,
+    respond: impl FnOnce(&HostFnState, Result<Req, String>) -> Result<Resp, extism::Error>,
 ) -> Result<(), extism::Error>
 where
     Req: serde::de::DeserializeOwned,
-    Resp: serde::Serialize,
+    Resp: CapabilityReply,
 {
     let state = user_data
         .get()
@@ -684,30 +734,28 @@ where
                 .map(|guard| guard.clone())
         })
         .map_err(|e| extism::Error::msg(format!("{name}: user data 不可用: {e}")))?;
-    // 逐次权限门：验签包路径只放行清单声明过的 capability（被门拒绝的请求
-    // 不进入桩派发、不计入请求留痕——与宿主把权限检查放在 provider 之前
-    // 的语义一致）。
-    check_capability_grant(&state, name, capability)?;
-    let offset = match input.first().and_then(|v| v.i64()) {
-        Some(o) if o > 0 => o as u64,
-        _ => return Err(extism::Error::msg(format!("{name} 需要 i64 入参 offset"))),
-    };
-    let handle = plugin
-        .memory_handle(offset)
-        .ok_or_else(|| extism::Error::msg(format!("{name} 非法入参 offset: {offset}")))?;
-    let bytes = plugin
-        .memory_bytes(handle)
-        .map_err(|e| e.context(format!("{name} 读取入参失败")))?
-        .to_vec();
-    plugin
-        .memory_free(handle)
-        .map_err(|e| e.context(format!("{name} 释放入参失败")))?;
-    let request: Req = serde_json::from_slice(&bytes)
-        .map_err(|e| extism::Error::msg(format!("{name} 入参 JSON 非法: {e}")))?;
+    let parsed: Result<Req, String> = (|| {
+        let offset = input
+            .first()
+            .and_then(|v| v.i64())
+            .filter(|offset| *offset > 0)
+            .ok_or_else(|| format!("{name} 需要 i64 入参 offset"))? as u64;
+        let handle = plugin
+            .memory_handle(offset)
+            .ok_or_else(|| format!("非法入参 offset: {offset}"))?;
+        let bytes = plugin
+            .memory_bytes(handle)
+            .map_err(|e| format!("读取入参失败: {e}"))?
+            .to_vec();
+        plugin
+            .memory_free(handle)
+            .map_err(|e| format!("释放入参失败: {e}"))?;
+        serde_json::from_slice(&bytes).map_err(|e| format!("入参 JSON 非法: {e}"))
+    })();
 
-    // 桩 panic 兜底为宿主级 Err（与 http_request 的 panic 兜底对应；
-    // capability 无 ok:false DTO 通道，只能 fail 整个调用）。
-    let response = std::panic::catch_unwind(AssertUnwindSafe(|| dispatch(&state, request)))
+    // 桩 panic 兜底为宿主级 Err（宿主对应 provider panic → internal DTO；
+    // 桩 panic 意味着夹具自身坏了，大声失败更利于定位）。
+    let response = std::panic::catch_unwind(AssertUnwindSafe(|| respond(&state, parsed)))
         .map_err(|_| extism::Error::msg(format!("{name} 桩 panic（已兜底）")))??;
 
     let bytes = serde_json::to_vec(&response)
@@ -722,7 +770,8 @@ where
 }
 
 /// `tma_catalog_read`（I64 → I64）：ABI 1.6 曲库只读查询，注入面是
-/// [`CapabilityStub`] 的 catalog 路由表。
+/// [`CapabilityStub`] 的 catalog 路由表。校验顺序与宿主一致：
+/// 入参 → DTO 版本 → `catalog.read` 权限门 → `limit` 范围 → 桩派发。
 fn tma_catalog_read_host_fn(
     plugin: &mut CurrentPlugin,
     input: &[Val],
@@ -735,13 +784,47 @@ fn tma_catalog_read_host_fn(
         output,
         user_data,
         "tma_catalog_read",
-        "catalog.read",
-        |state, req| state.capabilities.dispatch_catalog(req),
+        |state, parsed: Result<CatalogReadRequest, String>| {
+            Ok(match parsed {
+                Err(message) => CatalogReadResponse::error_response(
+                    CAPABILITY_DTO_VERSION,
+                    0,
+                    "bad_request",
+                    message,
+                ),
+                Ok(request) if request.version != CAPABILITY_DTO_VERSION => {
+                    CatalogReadResponse::error_response(
+                        CAPABILITY_DTO_VERSION,
+                        0,
+                        "unsupported_version",
+                        "不支持的 catalog DTO 版本".into(),
+                    )
+                }
+                Ok(request) if capability_denied(state, "catalog.read") => {
+                    CatalogReadResponse::error_response(
+                        request.version,
+                        0,
+                        "forbidden",
+                        "插件未声明 catalog.read 权限".into(),
+                    )
+                }
+                Ok(request) if request.limit == 0 || request.limit > 1_000 => {
+                    CatalogReadResponse::error_response(
+                        request.version,
+                        0,
+                        "bad_request",
+                        "limit 必须在 1..=1000 内".into(),
+                    )
+                }
+                Ok(request) => state.capabilities.dispatch_catalog(request)?,
+            })
+        },
     )
 }
 
 /// `tma_identity_read`（I64 → I64）：ABI 1.6 调用身份快照，注入面是
-/// [`CapabilityStub`] 的 identity 单值槽。
+/// [`CapabilityStub`] 的 identity 单值槽。校验顺序与宿主一致：
+/// 入参 → DTO 版本 → `identity.read` 权限门 → 桩派发。
 fn tma_identity_read_host_fn(
     plugin: &mut CurrentPlugin,
     input: &[Val],
@@ -754,13 +837,39 @@ fn tma_identity_read_host_fn(
         output,
         user_data,
         "tma_identity_read",
-        "identity.read",
-        |state, req| state.capabilities.dispatch_identity(req),
+        |state, parsed: Result<IdentityReadRequest, String>| {
+            Ok(match parsed {
+                Err(message) => IdentityReadResponse::error_response(
+                    CAPABILITY_DTO_VERSION,
+                    0,
+                    "bad_request",
+                    message,
+                ),
+                Ok(request) if request.version != CAPABILITY_DTO_VERSION => {
+                    IdentityReadResponse::error_response(
+                        CAPABILITY_DTO_VERSION,
+                        0,
+                        "unsupported_version",
+                        "不支持的 identity DTO 版本".into(),
+                    )
+                }
+                Ok(request) if capability_denied(state, "identity.read") => {
+                    IdentityReadResponse::error_response(
+                        request.version,
+                        0,
+                        "forbidden",
+                        "插件未声明 identity.read 权限".into(),
+                    )
+                }
+                Ok(request) => state.capabilities.dispatch_identity(request)?,
+            })
+        },
     )
 }
 
 /// `tma_media_stream`（I64 → I64）：ABI 1.6 按 media id 读媒体流，注入面是
-/// [`CapabilityStub`] 的 media 路由表。
+/// [`CapabilityStub`] 的 media 路由表。校验顺序与宿主一致：入参 → DTO
+/// 版本 → `media_id` 非空 → range 合法 → `media.stream` 权限门 → 桩派发。
 fn tma_media_stream_host_fn(
     plugin: &mut CurrentPlugin,
     input: &[Val],
@@ -773,8 +882,53 @@ fn tma_media_stream_host_fn(
         output,
         user_data,
         "tma_media_stream",
-        "media.stream",
-        |state, req| state.capabilities.dispatch_media(req),
+        |state, parsed: Result<MediaStreamRequest, String>| {
+            Ok(match parsed {
+                Err(message) => MediaStreamResponse::error_response(
+                    CAPABILITY_DTO_VERSION,
+                    400,
+                    "bad_request",
+                    message,
+                ),
+                Ok(request) if request.version != CAPABILITY_DTO_VERSION => {
+                    MediaStreamResponse::error_response(
+                        CAPABILITY_DTO_VERSION,
+                        400,
+                        "unsupported_version",
+                        "不支持的 media DTO 版本".into(),
+                    )
+                }
+                Ok(request) if request.media_id.trim().is_empty() => {
+                    MediaStreamResponse::error_response(
+                        request.version,
+                        400,
+                        "bad_request",
+                        "media_id 不能为空".into(),
+                    )
+                }
+                Ok(request)
+                    if request
+                        .range
+                        .is_some_and(|range| range.end.is_some_and(|end| end < range.start)) =>
+                {
+                    MediaStreamResponse::error_response(
+                        request.version,
+                        416,
+                        "invalid_range",
+                        "range end 不能小于 start".into(),
+                    )
+                }
+                Ok(request) if capability_denied(state, "media.stream") => {
+                    MediaStreamResponse::error_response(
+                        request.version,
+                        403,
+                        "forbidden",
+                        "插件未声明 media.stream 权限".into(),
+                    )
+                }
+                Ok(request) => state.capabilities.dispatch_media(request)?,
+            })
+        },
     )
 }
 
@@ -899,8 +1053,9 @@ impl LoadedPlugin {
     ///
     /// `runtime_config` 为注入的运行时配置 JSON（未配置传 `"{}"`），实例化后
     /// 经 `tma_config` 宿主函数对插件可见。capability 桩取全未配置空桩——
-    /// 宿主函数无条件注册，老插件不 import 即无副作用，ABI 1.6 插件的
-    /// capability 调用将以宿主级 `Err` 失败。
+    /// 宿主函数无条件注册，老插件不 import 即无副作用；裸 wasm 路径无清单
+    /// 可据，capability 权限门全放行（验签包路径见
+    /// [`Self::from_verified_with_capabilities`]）。
     pub fn from_wasm(
         wasm: &[u8],
         runtime_config: &str,
@@ -1003,8 +1158,8 @@ impl LoadedPlugin {
 
     /// `from_verified` 的 capability 变体：除 [`Self::from_wasm_with_capabilities`]
     /// 的行为外，还按 `verified.manifest` 的 `permissions` 复现逐次
-    /// capability 权限门——插件调用清单未声明的 capability 时宿主函数返回
-    /// `Err`（整个导出调用失败），与真实宿主同口径。
+    /// capability 权限门——插件调用清单未声明的 capability 时宿主函数写回
+    /// `ok:false` + `forbidden` 应答（media 为 403），与真实宿主同口径。
     pub fn from_verified_with_capabilities(
         verified: &VerifiedPlugin,
         runtime_config: &str,
@@ -1399,8 +1554,9 @@ mod tests {
         );
     }
 
-    /// 逐次权限门：验签包路径（granted=Some）对清单未声明的 capability 返回
-    /// 宿主级 `Err`；裸 wasm 路径（granted=None）保持放行。
+    /// 逐次权限门：验签包路径（granted=Some）对清单未声明的 capability 判
+    /// denied，宿主函数写回 `ok:false` + `forbidden` 应答（media 为 403）；
+    /// 裸 wasm 路径（granted=None）保持放行。
     #[test]
     fn capability_grant_gate_denies_undeclared() {
         let state = |granted: Option<BTreeSet<String>>| HostFnState {
@@ -1411,20 +1567,30 @@ mod tests {
         };
         let declared: BTreeSet<String> = ["catalog.read".to_string()].into_iter().collect();
 
-        assert!(
-            check_capability_grant(
-                &state(Some(declared.clone())),
-                "tma_catalog_read",
-                "catalog.read"
-            )
-            .is_ok()
-        );
-        let err =
-            check_capability_grant(&state(Some(declared)), "tma_media_stream", "media.stream")
-                .unwrap_err();
-        assert!(err.to_string().contains("media.stream"), "{err}");
-        assert!(err.to_string().contains("tma_media_stream"), "{err}");
+        assert!(!capability_denied(
+            &state(Some(declared.clone())),
+            "catalog.read"
+        ));
+        assert!(capability_denied(&state(Some(declared)), "media.stream"));
         // 无清单路径（from_wasm*）不做权限门。
-        assert!(check_capability_grant(&state(None), "tma_media_stream", "media.stream").is_ok());
+        assert!(!capability_denied(&state(None), "media.stream"));
+
+        // 拒绝应答与宿主同口径：ok:false + forbidden；media 另带 status 403。
+        let denied = MediaStreamResponse::error_response(
+            CAPABILITY_DTO_VERSION,
+            403,
+            "forbidden",
+            "插件未声明 media.stream 权限".into(),
+        );
+        assert!(!denied.ok && denied.status == 403);
+        assert_eq!(denied.error.as_ref().unwrap().code, "forbidden");
+        let denied = CatalogReadResponse::error_response(
+            CAPABILITY_DTO_VERSION,
+            0,
+            "forbidden",
+            "插件未声明 catalog.read 权限".into(),
+        );
+        assert!(!denied.ok && denied.items.is_empty());
+        assert_eq!(denied.error.as_ref().unwrap().code, "forbidden");
     }
 }
