@@ -801,8 +801,8 @@ fn cover_art_rejects_size_before_media_call() {
 ///
 /// 签名包结构保证两份清单必然一致，构造不出「清单缺权限但 wasm 照常
 /// 调用」的包——那种一致缺权的形态（manifest.json 改后重建 wasm）由
-/// testkit 逐次权限门在调用期拦截（`capability_grant_gate_denies_undeclared`
-/// 单测覆盖）；本用例验证篡改路径在加载期即被拦下。
+/// testkit 逐次权限门在调用期拦截（`capability_responders_validate_in_host_order`
+/// 单测覆盖拒绝应答与校验顺序）；本用例验证篡改路径在加载期即被拦下。
 #[test]
 fn manifest_dropping_capability_is_rejected_at_load() {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
