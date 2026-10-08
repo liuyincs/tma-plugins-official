@@ -6,8 +6,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use tma_plugin_sdk::PluginErrorCode;
-use testkit::{BEATLES_MBID, Route, RouteBuilder, StubProxy, artist_query};
+use testkit::{BEATLES_MBID, PluginErrorCode, Route, RouteBuilder, StubProxy, artist_query};
 
 /// 构建 wasm → 测试私钥 pack → 验签 → 实例化（`tma_config` 返回 runtime_config 原样）。
 fn load(runtime_config: &str, proxy: Arc<StubProxy>) -> testkit::LoadedPlugin {
@@ -52,10 +51,7 @@ fn lastfm_bio_falls_back_to_en_and_emits_image_ids_and_url() {
             body: en_body.to_string(),
         },
     ]);
-    let provider = load(
-        r#"{"api_key":"test-key","language":"zh"}"#,
-        proxy.clone(),
-    );
+    let provider = load(r#"{"api_key":"test-key","language":"zh"}"#, proxy.clone());
 
     let r = provider
         .call_scrape(artist_query(Some(BEATLES_MBID), Some("The Beatles")))

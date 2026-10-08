@@ -5,8 +5,7 @@
 
 use std::sync::Arc;
 
-use tma_plugin_sdk::PluginErrorCode;
-use testkit::{BEATLES_MBID, RouteBuilder, StubProxy, artist_query};
+use testkit::{BEATLES_MBID, PluginErrorCode, RouteBuilder, StubProxy, artist_query};
 
 /// 构建 wasm → 测试私钥 pack → 验签 → 实例化（`tma_config` 返回 runtime_config 原样）。
 fn load(runtime_config: &str, proxy: Arc<StubProxy>) -> testkit::LoadedPlugin {

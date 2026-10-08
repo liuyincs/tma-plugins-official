@@ -5,8 +5,7 @@
 
 use std::sync::Arc;
 
-use tma_plugin_sdk::PluginErrorCode;
-use testkit::{RouteBuilder, StubProxy, artist_query, artist_query_with_known};
+use testkit::{PluginErrorCode, RouteBuilder, StubProxy, artist_query, artist_query_with_known};
 
 /// 构建 wasm → 测试私钥 pack → 验签 → 实例化（`tma_config` 返回 runtime_config 原样）。
 fn load(runtime_config: &str, proxy: Arc<StubProxy>) -> testkit::LoadedPlugin {
@@ -67,10 +66,7 @@ fn apple_music_search_bearer_token_and_storefront() {
 #[test]
 fn apple_music_known_id_short_circuits_zero_outbound() {
     let proxy = StubProxy::new(vec![]);
-    let provider = load(
-        r#"{"developer_token":"dev-tok"}"#,
-        proxy.clone(),
-    );
+    let provider = load(r#"{"developer_token":"dev-tok"}"#, proxy.clone());
 
     let r = provider
         .call_scrape(artist_query_with_known(

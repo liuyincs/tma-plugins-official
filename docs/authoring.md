@@ -40,8 +40,9 @@ tma_plugin_sdk::plugin! {
     // actions = f,  // 生成 tma_action 导出（ABI 1.2 起）
     // event = f,    // 生成 tma_event 导出（ABI 1.3 起）
     // import = f,   // 生成 tma_playlist_import 导出（ABI 1.4 起）
-    // ai_chat,      // 声明 ai_chat 宿主函数（与 import 独立，须写在最后）
     // http = f,              // 生成 tma_http 导出（ABI 1.6 起）
+    // ai_chat,      // 声明 ai_chat 宿主函数（与 import 独立；须写在 http 之后、
+    //              //   capability 槽之前）
     // catalog_read = f,      // 声明 tma_catalog_read 宿主函数 + 生成读取助手（ABI 1.6 起）
     // identity_read = f,     // 声明 tma_identity_read 宿主函数 + 生成读取助手（ABI 1.6 起）
     // media_stream = f,      // 声明 tma_media_stream 宿主函数 + 生成读取助手（ABI 1.6 起）
@@ -97,9 +98,16 @@ tma_plugin_sdk::plugin! {
 ## 验收测试
 
 `tests/` 放行为级验收测试：`testkit`（仓库根共享件）负责构建 wasm、测试私钥
-打包验签、extism 实例化与 stub 出站代理——测试直接调 `scrape`/`tma_action`/
-`tma_event` 导出断言请求形状与响应语义。写法见 `plugins/spotify/tests/`
-与 `testkit/`；`cargo test` 在插件目录内跑全量（含双 target 纯逻辑单测）。
+打包验签、extism 实例化与宿主侧注入——`http_request` 出站 stub 代理，以及
+ABI 1.6 的三条 capability 宿主函数（`tma_catalog_read`/`tma_identity_read`/
+`tma_media_stream`，由 `CapabilityStub` 的字段匹配路由表与 identity 槽位
+应答；校验顺序与宿主一致——入参/DTO 版本/字段/权限门失败写回结构化
+错误应答，manifest 未声明的 capability 返回 `forbidden`（media 为 403）；
+仅桩未配置或未命中时以宿主函数级失败显式报错）。测试直接调
+`scrape`/`tma_action`/`tma_event`/`tma_http` 导出断言请求形状与响应语义——
+出站刮削插件写法见 `plugins/spotify/tests/`，入站 HTTP 插件（`http`
+扩展点 + capability 权限）见 `plugins/subsonic/tests/`；`cargo test` 在
+插件目录内跑全量（含双 target 纯逻辑单测）。
 CI 在发布签名前强制执行（`.github/workflows/test.yml` 与 `release.yml`）。
 
 ## 签名与打包
