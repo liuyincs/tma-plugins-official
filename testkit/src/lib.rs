@@ -389,7 +389,9 @@ pub fn media_err(status: u16, code: &str, message: &str) -> MediaStreamResponse 
 }
 
 /// 三条 capability 宿主函数的注入面：catalog/media 各一张「匹配条件 → 响应」
-/// 路由表（先注册先命中），identity 单值槽；每次调用都先记录完整请求 DTO。
+/// 路由表（先注册先命中），identity 单值槽；进入派发的每次调用都先记录
+/// 完整请求 DTO（在宿主函数入口校验/权限门阶段被拒绝的调用不进入桩派发、
+/// 不留痕——与宿主把校验放在 provider 之前一致）。
 ///
 /// 未配置（identity 槽空 / 路由表为空）或未命中的调用返回宿主函数级 `Err`
 /// （整个导出调用当场失败，错误消息带 capability 名与请求摘要）——与
@@ -406,7 +408,8 @@ pub struct CapabilityStub {
 }
 
 impl CapabilityStub {
-    /// 全未配置的空桩：三条宿主函数的任何调用都先记录后 `Err`。
+    /// 全未配置的空桩：进入桩派发的任何调用都先记录后 `Err`（入口校验或
+    /// 权限门拒绝的调用不进入派发——宿主函数直接写回结构化错误 DTO）。
     pub fn new() -> Arc<Self> {
         Arc::new(Self::default())
     }
@@ -726,14 +729,24 @@ where
     Req: serde::de::DeserializeOwned,
     Resp: CapabilityReply,
 {
+    // 与宿主同口径：宿主状态不可用时写回 internal DTO，不 trap。
     let state = user_data
         .get()
-        .and_then(|cell| {
-            cell.lock()
-                .map_err(|_| extism::Error::msg("user data 锁中毒"))
-                .map(|guard| guard.clone())
-        })
-        .map_err(|e| extism::Error::msg(format!("{name}: user data 不可用: {e}")))?;
+        .ok()
+        .and_then(|cell| cell.lock().map(|guard| guard.clone()).ok());
+    let Some(state) = state else {
+        return write_capability_output(
+            plugin,
+            output,
+            &Resp::error_response(
+                CAPABILITY_DTO_VERSION,
+                500,
+                "internal",
+                "capability 状态不可用".into(),
+            ),
+            name,
+        );
+    };
     let parsed: Result<Req, String> = (|| {
         let offset = input
             .first()
@@ -757,8 +770,17 @@ where
     // 桩 panic 意味着夹具自身坏了，大声失败更利于定位）。
     let response = std::panic::catch_unwind(AssertUnwindSafe(|| respond(&state, parsed)))
         .map_err(|_| extism::Error::msg(format!("{name} 桩 panic（已兜底）")))??;
+    write_capability_output(plugin, output, &response, name)
+}
 
-    let bytes = serde_json::to_vec(&response)
+/// 写回 capability 应答 DTO（对应宿主 `write_capability_output`）。
+fn write_capability_output<Resp: serde::Serialize>(
+    plugin: &mut CurrentPlugin,
+    output: &mut [Val],
+    response: &Resp,
+    name: &'static str,
+) -> Result<(), extism::Error> {
+    let bytes = serde_json::to_vec(response)
         .map_err(|e| extism::Error::msg(format!("{name} 响应序列化失败: {e}")))?;
     let mem = plugin
         .memory_new(bytes)
@@ -784,41 +806,7 @@ fn tma_catalog_read_host_fn(
         output,
         user_data,
         "tma_catalog_read",
-        |state, parsed: Result<CatalogReadRequest, String>| {
-            Ok(match parsed {
-                Err(message) => CatalogReadResponse::error_response(
-                    CAPABILITY_DTO_VERSION,
-                    0,
-                    "bad_request",
-                    message,
-                ),
-                Ok(request) if request.version != CAPABILITY_DTO_VERSION => {
-                    CatalogReadResponse::error_response(
-                        CAPABILITY_DTO_VERSION,
-                        0,
-                        "unsupported_version",
-                        "不支持的 catalog DTO 版本".into(),
-                    )
-                }
-                Ok(request) if capability_denied(state, "catalog.read") => {
-                    CatalogReadResponse::error_response(
-                        request.version,
-                        0,
-                        "forbidden",
-                        "插件未声明 catalog.read 权限".into(),
-                    )
-                }
-                Ok(request) if request.limit == 0 || request.limit > 1_000 => {
-                    CatalogReadResponse::error_response(
-                        request.version,
-                        0,
-                        "bad_request",
-                        "limit 必须在 1..=1000 内".into(),
-                    )
-                }
-                Ok(request) => state.capabilities.dispatch_catalog(request)?,
-            })
-        },
+        catalog_respond,
     )
 }
 
@@ -837,33 +825,7 @@ fn tma_identity_read_host_fn(
         output,
         user_data,
         "tma_identity_read",
-        |state, parsed: Result<IdentityReadRequest, String>| {
-            Ok(match parsed {
-                Err(message) => IdentityReadResponse::error_response(
-                    CAPABILITY_DTO_VERSION,
-                    0,
-                    "bad_request",
-                    message,
-                ),
-                Ok(request) if request.version != CAPABILITY_DTO_VERSION => {
-                    IdentityReadResponse::error_response(
-                        CAPABILITY_DTO_VERSION,
-                        0,
-                        "unsupported_version",
-                        "不支持的 identity DTO 版本".into(),
-                    )
-                }
-                Ok(request) if capability_denied(state, "identity.read") => {
-                    IdentityReadResponse::error_response(
-                        request.version,
-                        0,
-                        "forbidden",
-                        "插件未声明 identity.read 权限".into(),
-                    )
-                }
-                Ok(request) => state.capabilities.dispatch_identity(request)?,
-            })
-        },
+        identity_respond,
     )
 }
 
@@ -882,54 +844,129 @@ fn tma_media_stream_host_fn(
         output,
         user_data,
         "tma_media_stream",
-        |state, parsed: Result<MediaStreamRequest, String>| {
-            Ok(match parsed {
-                Err(message) => MediaStreamResponse::error_response(
-                    CAPABILITY_DTO_VERSION,
-                    400,
-                    "bad_request",
-                    message,
-                ),
-                Ok(request) if request.version != CAPABILITY_DTO_VERSION => {
-                    MediaStreamResponse::error_response(
-                        CAPABILITY_DTO_VERSION,
-                        400,
-                        "unsupported_version",
-                        "不支持的 media DTO 版本".into(),
-                    )
-                }
-                Ok(request) if request.media_id.trim().is_empty() => {
-                    MediaStreamResponse::error_response(
-                        request.version,
-                        400,
-                        "bad_request",
-                        "media_id 不能为空".into(),
-                    )
-                }
-                Ok(request)
-                    if request
-                        .range
-                        .is_some_and(|range| range.end.is_some_and(|end| end < range.start)) =>
-                {
-                    MediaStreamResponse::error_response(
-                        request.version,
-                        416,
-                        "invalid_range",
-                        "range end 不能小于 start".into(),
-                    )
-                }
-                Ok(request) if capability_denied(state, "media.stream") => {
-                    MediaStreamResponse::error_response(
-                        request.version,
-                        403,
-                        "forbidden",
-                        "插件未声明 media.stream 权限".into(),
-                    )
-                }
-                Ok(request) => state.capabilities.dispatch_media(request)?,
-            })
-        },
+        media_respond,
     )
+}
+
+/// `tma_catalog_read` 的业务段（与宿主 `catalog_read_host_fn` 同序）：
+/// 入参失败 → `bad_request`；DTO 版本不符 → `unsupported_version`；
+/// `catalog.read` 未声明 → `forbidden`；`limit` 越界 → `bad_request`；
+/// 否则进桩派发（桩缺配置/未命中 `Err` 上抛为宿主级失败）。
+fn catalog_respond(
+    state: &HostFnState,
+    parsed: Result<CatalogReadRequest, String>,
+) -> Result<CatalogReadResponse, extism::Error> {
+    Ok(match parsed {
+        Err(message) => {
+            CatalogReadResponse::error_response(CAPABILITY_DTO_VERSION, 0, "bad_request", message)
+        }
+        Ok(request) if request.version != CAPABILITY_DTO_VERSION => {
+            CatalogReadResponse::error_response(
+                CAPABILITY_DTO_VERSION,
+                0,
+                "unsupported_version",
+                "不支持的 catalog DTO 版本".into(),
+            )
+        }
+        Ok(request) if capability_denied(state, "catalog.read") => {
+            CatalogReadResponse::error_response(
+                request.version,
+                0,
+                "forbidden",
+                "插件未声明 catalog.read 权限".into(),
+            )
+        }
+        Ok(request) if request.limit == 0 || request.limit > 1_000 => {
+            CatalogReadResponse::error_response(
+                request.version,
+                0,
+                "bad_request",
+                "limit 必须在 1..=1000 内".into(),
+            )
+        }
+        Ok(request) => state.capabilities.dispatch_catalog(request)?,
+    })
+}
+
+/// `tma_identity_read` 的业务段（与宿主 `identity_read_host_fn` 同序）：
+/// 入参失败 → `bad_request`；DTO 版本不符 → `unsupported_version`；
+/// `identity.read` 未声明 → `forbidden`；否则进桩派发。
+fn identity_respond(
+    state: &HostFnState,
+    parsed: Result<IdentityReadRequest, String>,
+) -> Result<IdentityReadResponse, extism::Error> {
+    Ok(match parsed {
+        Err(message) => {
+            IdentityReadResponse::error_response(CAPABILITY_DTO_VERSION, 0, "bad_request", message)
+        }
+        Ok(request) if request.version != CAPABILITY_DTO_VERSION => {
+            IdentityReadResponse::error_response(
+                CAPABILITY_DTO_VERSION,
+                0,
+                "unsupported_version",
+                "不支持的 identity DTO 版本".into(),
+            )
+        }
+        Ok(request) if capability_denied(state, "identity.read") => {
+            IdentityReadResponse::error_response(
+                request.version,
+                0,
+                "forbidden",
+                "插件未声明 identity.read 权限".into(),
+            )
+        }
+        Ok(request) => state.capabilities.dispatch_identity(request)?,
+    })
+}
+
+/// `tma_media_stream` 的业务段（与宿主 `media_stream_host_fn` 同序）：
+/// 入参失败 → 400 `bad_request`；DTO 版本不符 → 400 `unsupported_version`；
+/// `media_id` 空 → 400 `bad_request`；range end < start → 416
+/// `invalid_range`；`media.stream` 未声明 → 403 `forbidden`；否则进桩派发。
+fn media_respond(
+    state: &HostFnState,
+    parsed: Result<MediaStreamRequest, String>,
+) -> Result<MediaStreamResponse, extism::Error> {
+    Ok(match parsed {
+        Err(message) => {
+            MediaStreamResponse::error_response(CAPABILITY_DTO_VERSION, 400, "bad_request", message)
+        }
+        Ok(request) if request.version != CAPABILITY_DTO_VERSION => {
+            MediaStreamResponse::error_response(
+                CAPABILITY_DTO_VERSION,
+                400,
+                "unsupported_version",
+                "不支持的 media DTO 版本".into(),
+            )
+        }
+        Ok(request) if request.media_id.trim().is_empty() => MediaStreamResponse::error_response(
+            request.version,
+            400,
+            "bad_request",
+            "media_id 不能为空".into(),
+        ),
+        Ok(request)
+            if request
+                .range
+                .is_some_and(|range| range.end.is_some_and(|end| end < range.start)) =>
+        {
+            MediaStreamResponse::error_response(
+                request.version,
+                416,
+                "invalid_range",
+                "range end 不能小于 start".into(),
+            )
+        }
+        Ok(request) if capability_denied(state, "media.stream") => {
+            MediaStreamResponse::error_response(
+                request.version,
+                403,
+                "forbidden",
+                "插件未声明 media.stream 权限".into(),
+            )
+        }
+        Ok(request) => state.capabilities.dispatch_media(request)?,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -1574,23 +1611,120 @@ mod tests {
         assert!(capability_denied(&state(Some(declared)), "media.stream"));
         // 无清单路径（from_wasm*）不做权限门。
         assert!(!capability_denied(&state(None), "media.stream"));
+    }
 
-        // 拒绝应答与宿主同口径：ok:false + forbidden；media 另带 status 403。
-        let denied = MediaStreamResponse::error_response(
-            CAPABILITY_DTO_VERSION,
-            403,
-            "forbidden",
-            "插件未声明 media.stream 权限".into(),
+    /// respond 段的校验顺序与宿主逐分支一致，直接打三条 respond 函数：
+    /// 入参损坏 → `bad_request`；DTO 版本不符 → `unsupported_version`；
+    /// 权限门在字段校验之后（media 非法 range 416 先于未声明 403；
+    /// catalog 未声明 `forbidden` 先于 `limit` 越界 bad_request）；
+    /// 被前置校验/权限门拒绝的请求不进入桩派发、不留痕。
+    #[test]
+    fn capability_responders_validate_in_host_order() {
+        let stub = CapabilityStub::authenticated("u-1", "alice", false);
+        let state = |granted: BTreeSet<String>| HostFnState {
+            proxy: StubProxy::new(vec![]),
+            capabilities: stub.clone(),
+            runtime_config: Arc::from("{}"),
+            granted: Some(Arc::new(granted)),
+        };
+        let all =
+            |names: &[&str]| -> BTreeSet<String> { names.iter().map(|n| n.to_string()).collect() };
+        let media_req = |range: Option<MediaByteRange>| {
+            Ok(MediaStreamRequest {
+                version: CAPABILITY_DTO_VERSION,
+                media_id: "m-1".into(),
+                range,
+                ..Default::default()
+            })
+        };
+
+        // 入参损坏：三条 respond 都是 bad_request（media 状态 400）。
+        let resp = media_respond(&state(all(&[])), Err("坏 JSON".into())).unwrap();
+        assert!(!resp.ok && resp.status == 400);
+        assert_eq!(resp.error.as_ref().unwrap().code, "bad_request");
+        let resp = catalog_respond(&state(all(&[])), Err("坏 JSON".into())).unwrap();
+        assert_eq!(resp.error.as_ref().unwrap().code, "bad_request");
+        let resp = identity_respond(&state(all(&[])), Err("坏 JSON".into())).unwrap();
+        assert_eq!(resp.error.as_ref().unwrap().code, "bad_request");
+
+        // DTO 版本不符 → unsupported_version，先于权限门。
+        let mut bad_version = media_req(None).unwrap();
+        bad_version.version = CAPABILITY_DTO_VERSION + 1;
+        let resp = media_respond(&state(all(&[])), Ok(bad_version)).unwrap();
+        assert_eq!(resp.error.as_ref().unwrap().code, "unsupported_version");
+        assert_eq!(resp.status, 400);
+        let resp = catalog_respond(
+            &state(all(&[])),
+            Ok(CatalogReadRequest {
+                version: CAPABILITY_DTO_VERSION + 1,
+                limit: 20,
+                ..Default::default()
+            }),
+        )
+        .unwrap();
+        assert_eq!(resp.error.as_ref().unwrap().code, "unsupported_version");
+
+        // media：字段校验（media_id 空 → 400；非法 range → 416）先于权限门。
+        let mut empty_id = media_req(None).unwrap();
+        empty_id.media_id = "  ".into();
+        let resp = media_respond(&state(all(&[])), Ok(empty_id)).unwrap();
+        assert_eq!(resp.status, 400);
+        assert_eq!(resp.error.as_ref().unwrap().code, "bad_request");
+        let bad_range = media_req(Some(MediaByteRange {
+            start: 10,
+            end: Some(5),
+        }));
+        let resp = media_respond(&state(all(&[])), bad_range).unwrap();
+        assert_eq!(resp.status, 416, "非法 range 先于权限门拒绝");
+        assert_eq!(resp.error.as_ref().unwrap().code, "invalid_range");
+
+        // media：通过字段校验但未声明 media.stream → 403 forbidden。
+        let resp = media_respond(&state(all(&["catalog.read"])), media_req(None)).unwrap();
+        assert_eq!(resp.status, 403);
+        assert_eq!(resp.error.as_ref().unwrap().code, "forbidden");
+
+        // catalog：权限门先于 limit 校验——未声明时即使 limit 越界也先 403。
+        let resp = catalog_respond(
+            &state(all(&["media.stream"])),
+            Ok(CatalogReadRequest {
+                version: CAPABILITY_DTO_VERSION,
+                limit: 0,
+                ..Default::default()
+            }),
+        )
+        .unwrap();
+        assert_eq!(resp.error.as_ref().unwrap().code, "forbidden");
+
+        // catalog：声明后 limit 越界 → bad_request。
+        let resp = catalog_respond(
+            &state(all(&["catalog.read"])),
+            Ok(CatalogReadRequest {
+                version: CAPABILITY_DTO_VERSION,
+                limit: 0,
+                ..Default::default()
+            }),
+        )
+        .unwrap();
+        assert_eq!(resp.error.as_ref().unwrap().code, "bad_request");
+
+        // identity：未声明 → forbidden。
+        let resp = identity_respond(
+            &state(all(&["catalog.read"])),
+            Ok(IdentityReadRequest {
+                version: CAPABILITY_DTO_VERSION,
+            }),
+        )
+        .unwrap();
+        assert_eq!(resp.error.as_ref().unwrap().code, "forbidden");
+
+        // 以上全部在派发前被拒，桩的留痕为空；放行后正常进桩（未配置 → Err 且留痕）。
+        assert!(stub.media_requests().is_empty());
+        assert!(stub.catalog_requests().is_empty());
+        assert!(stub.identity_requests().is_empty());
+        assert!(
+            media_respond(&state(all(&["media.stream"])), media_req(None),).is_err(),
+            "放行但未配置桩 → 宿主级 Err"
         );
-        assert!(!denied.ok && denied.status == 403);
-        assert_eq!(denied.error.as_ref().unwrap().code, "forbidden");
-        let denied = CatalogReadResponse::error_response(
-            CAPABILITY_DTO_VERSION,
-            0,
-            "forbidden",
-            "插件未声明 catalog.read 权限".into(),
-        );
-        assert!(!denied.ok && denied.items.is_empty());
-        assert_eq!(denied.error.as_ref().unwrap().code, "forbidden");
+        assert_eq!(stub.media_requests().len(), 1, "进派发的调用才留痕");
     }
 }
