@@ -40,8 +40,9 @@ tma_plugin_sdk::plugin! {
     // actions = f,  // 生成 tma_action 导出（ABI 1.2 起）
     // event = f,    // 生成 tma_event 导出（ABI 1.3 起）
     // import = f,   // 生成 tma_playlist_import 导出（ABI 1.4 起）
-    // ai_chat,      // 声明 ai_chat 宿主函数（与 import 独立，须写在最后）
     // http = f,              // 生成 tma_http 导出（ABI 1.6 起）
+    // ai_chat,      // 声明 ai_chat 宿主函数（与 import 独立；须写在 http 之后、
+    //              //   capability 槽之前）
     // catalog_read = f,      // 声明 tma_catalog_read 宿主函数 + 生成读取助手（ABI 1.6 起）
     // identity_read = f,     // 声明 tma_identity_read 宿主函数 + 生成读取助手（ABI 1.6 起）
     // media_stream = f,      // 声明 tma_media_stream 宿主函数 + 生成读取助手（ABI 1.6 起）
