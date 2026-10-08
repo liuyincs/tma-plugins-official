@@ -20,12 +20,12 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 use serde_json::Value;
-use tma_plugin_sdk::{name_similarity, normalize_mbid};
 use tma_plugin_sdk::{
     Bio, DEFAULT_USER_AGENT, EntityQuery, FetchedId, GuestHttp, PluginError, PluginErrorCode,
     PluginEventRequest, PluginEventResponse, RemoteImage, ScrapeEntityKind, ScrapeResult,
     load_config, percent_encode_query, status_to_error,
 };
+use tma_plugin_sdk::{name_similarity, normalize_mbid};
 
 use crate::scrobble;
 
