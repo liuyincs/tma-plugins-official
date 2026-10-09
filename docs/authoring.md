@@ -7,7 +7,7 @@ TMA 插件是 wasm32 模块（extism 沙箱），经 ed25519 签名打成 `.tmap
 
 ```sh
 rustup target add wasm32-unknown-unknown
-cargo install tma-plugin-dev --locked   # 子命令 keygen / pubkey / pack
+cargo install tma-plugin-dev --version 0.3.0 --locked   # 子命令 keygen / pubkey / pack
 ```
 
 ## 从模板起步
@@ -133,7 +133,7 @@ tma-plugin-dev pack <插件目录> -o out.tmap
 
 tag `<dir>-v<semver>`（`<dir>` 为 `plugins/` 下目录名，如 `template-v0.1.0`）
 触发 `.github/workflows/release.yml`：构建 wasm → `cargo install
-tma-plugin-dev --locked` → 用 secret `TMA_PLUGIN_SIGNING_KEY_B64` 签名打包 →
+tma-plugin-dev --version 0.3.0 --locked` → 用 secret `TMA_PLUGIN_SIGNING_KEY_B64` 签名打包 →
 `gh release create` 上传 `dist/<name>.tmap`/`.sha256` →
 `scripts/update-catalog.py` 把条目回写 `catalog.json` 并提交回 main。
 
