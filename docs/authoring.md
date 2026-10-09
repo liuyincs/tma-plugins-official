@@ -21,6 +21,14 @@ cargo build --target wasm32-unknown-unknown --release
 各插件目录是独立 workspace（自带 `[workspace] members = ["."]`），`target/`
 落在插件目录内。复制后的修改清单见 [templates/README.md](../templates/README.md)。
 
+CI 自动发现：`test.yml` 由 `scripts/discover-plugins.py` 扫描 `plugins/` 一级
+非隐藏子目录生成测试 matrix，新增插件无需改 workflow。发现是 fail-closed
+的完整契约校验——每个目录须含 `manifest.json` + `Cargo.toml`，manifest 为
+JSON object 且 `id`/`name`/`version` 非空，`id` 全局唯一且符合上节格式与
+长度规则，目录名限 `[A-Za-z0-9_-]` 单路径段；任一目录不合规即整个
+discover job 失败，不会被静默跳过。`catalog.json` 仍只由发布脚本在发
+tag 时回写（见「在本仓库发布」）。
+
 ## SDK 与 FFI
 
 业务代码只依赖 `tma-plugin-sdk`。一个宏吐出全部 FFI 样板（manifest 导出、
