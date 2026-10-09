@@ -24,9 +24,10 @@ cargo build --target wasm32-unknown-unknown --release
 CI 自动发现：`test.yml` 由 `scripts/discover-plugins.py` 扫描 `plugins/` 一级
 非隐藏子目录生成测试 matrix，新增插件无需改 workflow。发现是 fail-closed
 的完整契约校验——每个目录须含 `manifest.json` + `Cargo.toml`，manifest 为
-JSON object 且 `id`/`name`/`version` 非空，`id` 全局唯一且符合上节格式与
-长度规则，目录名限 `[A-Za-z0-9_-]` 单路径段；任一目录不合规即整个
-discover job 失败，不会被静默跳过。`catalog.json` 仍只由发布脚本在发
+JSON object 且 `id`/`name`/`version` 非空，`id` 全局唯一且符合下文
+「manifest.json 字段」表的格式与长度规则，目录名限 `[A-Za-z0-9_-]`
+单路径段（symlink 同样拒绝）；任一目录不合规即整个 discover job
+失败，不会被静默跳过。`catalog.json` 仍只由发布脚本在发
 tag 时回写（见「在本仓库发布」）。
 
 ## SDK 与 FFI

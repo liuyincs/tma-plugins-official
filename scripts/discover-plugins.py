@@ -5,8 +5,9 @@
     scripts/discover-plugins.py [--root <仓库根>]
 
 契约（.github/workflows/test.yml 的 discover job 消费本脚本输出）：
-- 扫描 <root>/plugins/ 的一级、非隐藏子目录（`.` 开头跳过）；plugins/
-  不存在或扫不到任何插件目录即失败；任一目录不合规整个发现失败；
+- 扫描 <root>/plugins/ 的一级、非隐藏子目录（`.` 开头跳过）；symlink
+  一律失败（插件目录必须是真实目录）；plugins/ 不存在或扫不到任何
+  插件目录即失败；任一目录不合规整个发现失败；
 - 目录名须为单个安全路径段（[A-Za-z0-9_-]+），拒绝 `./`/`..`/`$(` 等
   会改变路径或触发 shell 展开的名字；
 - 每个插件目录必须同时含 manifest.json 与 Cargo.toml；
@@ -65,11 +66,14 @@ def check_manifest(plugin_dir: pathlib.Path) -> str:
 def discover(plugins_dir: pathlib.Path) -> list:
     if not plugins_dir.is_dir():
         raise die(f"缺插件根目录 {plugins_dir}")
-    dirs = sorted(
-        d
-        for d in plugins_dir.iterdir()
-        if d.is_dir() and not d.name.startswith(".")
-    )
+    dirs = []
+    for entry in sorted(plugins_dir.iterdir()):
+        if entry.name.startswith("."):
+            continue
+        if entry.is_symlink():
+            raise die(f"{entry} 是符号链接，插件目录必须是真实目录")
+        if entry.is_dir():
+            dirs.append(entry)
     if not dirs:
         raise die(f"{plugins_dir} 下没有任何插件目录")
 
