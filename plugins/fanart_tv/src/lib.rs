@@ -130,15 +130,7 @@ fn resolve_mbid(q: &EntityQuery) -> Option<String> {
     q.mbid
         .as_deref()
         .and_then(normalize_mbid)
-        .or_else(|| known_id(q, "musicbrainz").and_then(normalize_mbid))
-}
-
-/// 在已知 ID 中查找指定来源的 external_id（对应原生 EntityQuery::known_id）。
-fn known_id<'a>(q: &'a EntityQuery, provider: &str) -> Option<&'a str> {
-    q.known_external_ids
-        .iter()
-        .find(|f| f.provider == provider)
-        .map(|f| f.external_id.as_str())
+        .or_else(|| q.known_id("musicbrainz").and_then(normalize_mbid))
 }
 
 fn fetch_artist(q: &EntityQuery, api_key: &str) -> Result<ScrapeResult, PluginError> {

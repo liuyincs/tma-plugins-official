@@ -1956,7 +1956,7 @@ dependencies = [
  "extism",
  "serde",
  "serde_json",
- "tma-plugin-sdk 0.3.0",
+ "tma-plugin-sdk",
 ]
 
 [[package]]
@@ -2032,30 +2032,16 @@ dependencies = [
  "serde",
  "serde_json",
  "testkit",
- "tma-plugin-sdk 0.1.0",
+ "tma-plugin-sdk",
 ]
 
 [[package]]
 name = "tma-plugin-sdk"
-version = "0.1.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b893d9abadb864bf793bab27569cb2cad54e17f6d8a48014e64509de54e485e2"
+checksum = "8ccf5e0d11eee49d9dc255a93bb2071564f787c2594eae9d70932ad7b456daf5"
 dependencies = [
- "extism-pdk",
- "semver",
- "serde",
- "serde_json",
- "simplecc",
- "thiserror 2.0.21",
- "unicode-normalization",
-]
-
-[[package]]
-name = "tma-plugin-sdk"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67e73acaae437f2157d76e784c14ab3a41968488c8e55adaa2e7fffd29f3ffc3"
-dependencies = [
+ "base64",
  "ed25519-dalek",
  "extism-pdk",
  "semver",
