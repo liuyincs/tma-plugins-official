@@ -310,7 +310,7 @@ fn resolve_mbid(q: &EntityQuery) -> Option<String> {
     q.mbid
         .as_deref()
         .and_then(normalize_mbid)
-        .or_else(|| known_id(q, "musicbrainz").and_then(normalize_mbid))
+        .or_else(|| q.known_id("musicbrainz").and_then(normalize_mbid))
 }
 
 fn fetch_artist(
@@ -410,14 +410,6 @@ fn fetch_album(
 // ---------------------------------------------------------------------------
 // 响应解析（与原生逐字对应）
 // ---------------------------------------------------------------------------
-
-/// 在已知 ID 中查找指定来源的 external_id（对应原生 EntityQuery::known_id）。
-fn known_id<'a>(q: &'a EntityQuery, provider: &str) -> Option<&'a str> {
-    q.known_external_ids
-        .iter()
-        .find(|f| f.provider == provider)
-        .map(|f| f.external_id.as_str())
-}
 
 /// Last.fm 200 响应体内的 `error` / `message`（语义等同 4xx，不重试）。
 fn parse_api_error(body: &Value) -> Option<String> {

@@ -17,7 +17,7 @@ crate-type = ["cdylib"]
 # Last.fm api_sig = MD5(排序参数串 + shared_secret)：选 RustCrypto 的 md-5
 # （digest 家族、无 wasm-bindgen 传递依赖，wasm32-unknown-unknown 可编译）。
 md-5 = "0.10"
-tma-plugin-sdk = "0.1"
+tma-plugin-sdk = "0.3.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

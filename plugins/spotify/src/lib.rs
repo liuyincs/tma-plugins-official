@@ -183,7 +183,7 @@ fn run_scrape(query: EntityQuery) -> Result<ScrapeResult, PluginError> {
     }
 
     // 优先复用已知 Spotify ID（无需再查）。
-    if let Some(id) = known_id(&query, "spotify") {
+    if let Some(id) = query.known_id("spotify") {
         return Ok(ScrapeResult {
             external_ids: vec![FetchedId {
                 provider: "spotify".into(),
@@ -230,14 +230,6 @@ fn run_scrape(query: EntityQuery) -> Result<ScrapeResult, PluginError> {
         confidence,
         ..Default::default()
     })
-}
-
-/// 在已知 ID 中查找指定来源的 external_id（对应原生 EntityQuery::known_id）。
-fn known_id<'a>(q: &'a EntityQuery, provider: &str) -> Option<&'a str> {
-    q.known_external_ids
-        .iter()
-        .find(|f| f.provider == provider)
-        .map(|f| f.external_id.as_str())
 }
 
 /// 取 access_token（对应原生 ensure_token；无进程内缓存，每次调用换新，见模块注释）。
