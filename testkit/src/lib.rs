@@ -88,16 +88,17 @@ mod proxy;
 mod query;
 
 // 测试面直接消费的 SDK 类型统一从 testkit 再导出：插件测试只依赖
-// `use testkit::{...}`，不直依 `tma_plugin_sdk`——插件 crate 自身的 SDK 版本
-// 可以与 testkit 的不同（DTO 线格式逐字节兼容，断言口径以 testkit 侧为准）。
+// `use testkit::{...}`，不直依 `tma_plugin_sdk`。全仓插件与 testkit 同在
+// SDK 0.3 版本线（INT-5 收拢），断言口径即以 testkit 侧版本为准。
 pub use tma_plugin_sdk::{
     CAPABILITY_DTO_VERSION, CapabilityError, CatalogItem, CatalogReadRequest, CatalogReadResponse,
     EntityQuery, FetchedId, HttpHostRequest, HttpHostResponse, IdentityReadRequest,
-    IdentityReadResponse, MediaByteRange, MediaClientCapabilities, MediaStreamRequest,
-    MediaStreamResponse, PluginActionRequest, PluginActionResponse, PluginError, PluginErrorCode,
-    PluginEventRequest, PluginEventResponse, PluginHttpIdentity, PluginHttpRequest,
-    PluginHttpResponse, PluginIcon, PluginManifest, PluginOp, PluginOutcome, PluginRequest,
-    PluginResponse, ScrapeEntityKind, ScrapeResult, VerifiedPlugin, base64_decode, base64_encode,
+    IdentityReadResponse, LibraryType, MediaByteRange, MediaClientCapabilities, MediaStreamRequest,
+    MediaStreamResponse, NowPlayingEventPayload, PluginActionRequest, PluginActionResponse,
+    PluginError, PluginErrorCode, PluginEventKind, PluginEventRequest, PluginEventResponse,
+    PluginHttpIdentity, PluginHttpRequest, PluginHttpResponse, PluginIcon, PluginManifest,
+    PluginOp, PluginOutcome, PluginRequest, PluginResponse, ScrapeEntityKind, ScrapeResult,
+    ScrobbleEventPayload, TrackEventFields, VerifiedPlugin, base64_decode, base64_encode,
 };
 
 pub use crate::capability_stub::{
