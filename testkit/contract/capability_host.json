@@ -115,7 +115,7 @@
         "kind": "orchestrated",
         "catalog_routes": [
           {
-            "match": { "kind": "artist" },
+            "match": { "kind": "artist", "limit": 1 },
             "response": {
               "version": 1,
               "ok": true,
@@ -144,7 +144,7 @@
         "kind": "orchestrated",
         "catalog_routes": [
           {
-            "match": { "kind": "album" },
+            "match": { "kind": "album", "limit": 1000 },
             "response": {
               "version": 1,
               "ok": true,
@@ -567,6 +567,7 @@
             "match": {
               "media_id": "track-1",
               "codec": "flac",
+              "bitrate_kbps": 320,
               "range": { "start": 10, "end": 99 }
             },
             "response": {
@@ -662,6 +663,167 @@
       "expect": {
         "kind": "host_error",
         "message_contains": ["tma_media_stream", "桩无预设响应"],
+        "dispatch_count": 1
+      }
+    },
+    {
+      "id": "wasm_no_manifest_catalog_version_still_checked",
+      "fn": "tma_catalog_read",
+      "granted": null,
+      "input": { "kind": "json", "value": { "version": 2, "limit": 0 } },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "error_code": "unsupported_version",
+        "error_message": "不支持的 catalog DTO 版本",
+        "response_fields": { "items": [], "next_cursor": null },
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "wasm_no_manifest_catalog_limit_still_checked",
+      "fn": "tma_catalog_read",
+      "granted": null,
+      "input": { "kind": "json", "value": { "version": 1, "limit": 0 } },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "error_code": "bad_request",
+        "error_message": "limit 必须在 1..=1000 内",
+        "response_fields": { "items": [], "next_cursor": null },
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "wasm_no_manifest_catalog_dispatches",
+      "fn": "tma_catalog_read",
+      "granted": null,
+      "input": { "kind": "json", "value": { "version": 1, "kind": "artist", "limit": 5 } },
+      "stub": {
+        "kind": "orchestrated",
+        "catalog_routes": [
+          {
+            "match": { "kind": "artist", "limit": 5 },
+            "response": {
+              "version": 1,
+              "ok": true,
+              "items": [{ "id": "ar-1", "kind": "artist", "title": "Artist A" }]
+            }
+          }
+        ]
+      },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": true,
+        "response_fields": {
+          "items": [{ "id": "ar-1", "kind": "artist", "title": "Artist A" }]
+        },
+        "dispatch_count": 1
+      }
+    },
+    {
+      "id": "wasm_no_manifest_identity_version_still_checked",
+      "fn": "tma_identity_read",
+      "granted": null,
+      "input": { "kind": "json", "value": { "version": 3 } },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "error_code": "unsupported_version",
+        "error_message": "不支持的 identity DTO 版本",
+        "response_fields": { "user_id": null, "username": null, "is_admin": false },
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "wasm_no_manifest_identity_dispatches",
+      "fn": "tma_identity_read",
+      "granted": null,
+      "input": { "kind": "json", "value": { "version": 1 } },
+      "stub": {
+        "kind": "orchestrated",
+        "identity": {
+          "version": 1,
+          "ok": true,
+          "user_id": "u-1",
+          "username": "alice",
+          "is_admin": false,
+          "error": null
+        }
+      },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": true,
+        "response_fields": { "user_id": "u-1", "username": "alice", "is_admin": false },
+        "dispatch_count": 1
+      }
+    },
+    {
+      "id": "wasm_no_manifest_media_version_still_checked",
+      "fn": "tma_media_stream",
+      "granted": null,
+      "input": { "kind": "json", "value": { "version": 9, "media_id": "" } },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "status": 400,
+        "error_code": "unsupported_version",
+        "error_message": "不支持的 media DTO 版本",
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "wasm_no_manifest_media_fields_still_checked",
+      "fn": "tma_media_stream",
+      "granted": null,
+      "input": {
+        "kind": "json",
+        "value": { "version": 1, "media_id": "", "range": { "start": 5, "end": 1 } }
+      },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "status": 400,
+        "error_code": "bad_request",
+        "error_message": "media_id 不能为空",
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "wasm_no_manifest_media_dispatches",
+      "fn": "tma_media_stream",
+      "granted": null,
+      "input": {
+        "kind": "json",
+        "value": { "version": 1, "media_id": "m-1", "codec": "flac" }
+      },
+      "stub": {
+        "kind": "orchestrated",
+        "media_routes": [
+          {
+            "match": { "media_id": "m-1", "codec": "flac" },
+            "response": {
+              "version": 1,
+              "ok": true,
+              "status": 200,
+              "content_type": "audio/flac"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": true,
+        "status": 200,
+        "response_fields": { "content_type": "audio/flac" },
         "dispatch_count": 1
       }
     }

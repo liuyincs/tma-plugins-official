@@ -5,7 +5,7 @@
 //!
 //! ```ignore
 //! let proxy = StubProxy::new(vec![RouteBuilder::json("api.example.com", json!({...}))]);
-//! let mut plugin = HostSim::new()
+//! let plugin = HostSim::new()
 //!     .config(r#"{"api_key":"k"}"#)
 //!     .proxy(proxy.clone())
 //!     .load_dir(std::path::Path::new(env!("CARGO_MANIFEST_DIR")));

@@ -837,5 +837,8 @@ fn manifest_dropping_capability_is_rejected_at_load() {
         Err(err) => err,
         Ok(_) => panic!("应被清单一致性拒绝"),
     };
-    assert!(err.message.contains("清单"), "应被清单一致性拒绝: {err:?}");
+    assert!(
+        err.message.contains("导出与包内清单不一致"),
+        "应被清单一致性拒绝（而非探测调用失败或非法清单 JSON 分支）: {err:?}"
+    );
 }

@@ -2,7 +2,8 @@
 //! capability_host.json`，逐行手工转写自宿主 `capability_fns.rs`）+ 回放器。
 //!
 //! 回放器**不重写任何判断**：每条 case 新建记录型 [`CapabilityStub`] 与
-//! [`HostFnState`]（`granted` 由 case 指定），把 JSON 输入按 SDK 线格式
+//! [`HostFnState`]（`granted` 由 case 指定——数组为验签包授权集、`null`
+//! 为裸 wasm 全放行路径），把 JSON 输入按 SDK 线格式
 //! 反序列化（字段缺省走 serde 默认，如 `version` 缺省 = 1）后直接打真实
 //! 运行的 [`catalog_respond`]/[`identity_respond`]/[`media_respond`]，
 //! 断言应答的 version/status/error code/message 与进入桩派发的次数——
@@ -67,11 +68,32 @@ struct Case {
     id: String,
     #[serde(rename = "fn")]
     function: CapabilityFn,
-    granted: Vec<String>,
+    /// `granted` 必填：数组 = 验签包授权集（空数组 = 零授权，权限门全拒）；
+    /// `null` = 裸 wasm 路径（`load_wasm`，`HostFnState.granted=None`，权限门
+    /// 全放行——但版本与字段校验仍须生效，由 `wasm_no_manifest_*` case 锁死）。
+    granted: GrantedSet,
     input: InputCase,
     #[serde(default)]
     stub: Option<StubCase>,
     expect: ExpectCase,
+}
+
+/// case 的授权形态：自定义 `Deserialize` 让字段保持必填——数组映射为
+/// `Manifest`（Some 集合），`null` 映射为 `Permissive`（None），缺键直接
+/// 解析报错，避免「忘写 granted 静默变成全放行」。
+#[derive(Debug)]
+enum GrantedSet {
+    Manifest(Vec<String>),
+    Permissive,
+}
+
+impl<'de> Deserialize<'de> for GrantedSet {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        Ok(match Option::<Vec<String>>::deserialize(d)? {
+            Some(grants) => Self::Manifest(grants),
+            None => Self::Permissive,
+        })
+    }
 }
 
 /// case 针对的三条 capability 宿主函数之一。
@@ -398,9 +420,12 @@ fn replay_case(case: &Case) {
         proxy: StubProxy::new(vec![]),
         capabilities: stub.clone(),
         runtime_config: Arc::from("{}"),
-        granted: Some(Arc::new(
-            case.granted.iter().cloned().collect::<BTreeSet<String>>(),
-        )),
+        granted: match &case.granted {
+            GrantedSet::Manifest(set) => {
+                Some(Arc::new(set.iter().cloned().collect::<BTreeSet<String>>()))
+            }
+            GrantedSet::Permissive => None,
+        },
     };
 
     match case.function {
