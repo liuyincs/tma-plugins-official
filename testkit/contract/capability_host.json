@@ -1,0 +1,831 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "repository": "tma",
+    "path": "crates/plugin-host/src/capability_fns.rs",
+    "commit": "0b7816101cff33be90abf200e80af11175cdbb00",
+    "method": "manual_transcription",
+    "host_sdk_version": "0.3.1",
+    "capability_dto_version": 1
+  },
+  "coverage": ["dto_parse", "validation_precedence", "permission_gate", "pass_through"],
+  "excluded": [
+    "wasm_memory_protocol",
+    "state_unavailable",
+    "provider_absent",
+    "provider_error_mapping",
+    "provider_panic"
+  ],
+  "host_cases": [
+    {
+      "id": "catalog_parse_error_is_bad_request",
+      "fn": "tma_catalog_read",
+      "granted": ["catalog.read"],
+      "input": { "kind": "raw_json", "value": "{\"version\":1," },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "error_code": "bad_request",
+        "error_message_contains": "入参 JSON 非法",
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "catalog_version_mismatch_precedes_all",
+      "fn": "tma_catalog_read",
+      "granted": [],
+      "input": { "kind": "json", "value": { "version": 2, "limit": 0 } },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "error_code": "unsupported_version",
+        "error_message": "不支持的 catalog DTO 版本",
+        "response_fields": { "items": [], "next_cursor": null },
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "catalog_version_zero_precedes_gate",
+      "fn": "tma_catalog_read",
+      "granted": [],
+      "input": { "kind": "json", "value": { "version": 0, "limit": 0 } },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "error_code": "unsupported_version",
+        "error_message": "不支持的 catalog DTO 版本",
+        "response_fields": { "items": [], "next_cursor": null },
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "catalog_permission_before_limit",
+      "fn": "tma_catalog_read",
+      "granted": [],
+      "input": { "kind": "json", "value": { "version": 1, "limit": 0 } },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "error_code": "forbidden",
+        "error_message": "插件未声明 catalog.read 权限",
+        "response_fields": { "items": [], "next_cursor": null },
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "catalog_limit_zero_rejected",
+      "fn": "tma_catalog_read",
+      "granted": ["catalog.read"],
+      "input": { "kind": "json", "value": { "version": 1, "limit": 0 } },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "error_code": "bad_request",
+        "error_message": "limit 必须在 1..=1000 内",
+        "response_fields": { "items": [], "next_cursor": null },
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "catalog_limit_1001_rejected",
+      "fn": "tma_catalog_read",
+      "granted": ["catalog.read"],
+      "input": { "kind": "json", "value": { "version": 1, "limit": 1001 } },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "error_code": "bad_request",
+        "error_message": "limit 必须在 1..=1000 内",
+        "response_fields": { "items": [], "next_cursor": null },
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "catalog_limit_one_boundary_dispatches",
+      "fn": "tma_catalog_read",
+      "granted": ["catalog.read"],
+      "input": { "kind": "json", "value": { "kind": "artist", "limit": 1 } },
+      "stub": {
+        "kind": "orchestrated",
+        "catalog_routes": [
+          {
+            "match": { "kind": "artist", "limit": 1 },
+            "response": {
+              "version": 1,
+              "ok": true,
+              "items": [{ "id": "ar-1", "kind": "artist", "title": "Artist A" }]
+            }
+          }
+        ]
+      },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": true,
+        "response_fields": {
+          "items": [{ "id": "ar-1", "kind": "artist", "title": "Artist A" }],
+          "next_cursor": null
+        },
+        "dispatch_count": 1
+      }
+    },
+    {
+      "id": "catalog_limit_1000_boundary_dispatches",
+      "fn": "tma_catalog_read",
+      "granted": ["catalog.read"],
+      "input": { "kind": "json", "value": { "version": 1, "kind": "album", "limit": 1000 } },
+      "stub": {
+        "kind": "orchestrated",
+        "catalog_routes": [
+          {
+            "match": { "kind": "album", "limit": 1000 },
+            "response": {
+              "version": 1,
+              "ok": true,
+              "items": [{ "id": "al-1", "kind": "album", "title": "Album A" }]
+            }
+          }
+        ]
+      },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": true,
+        "response_fields": {
+          "items": [{ "id": "al-1", "kind": "album", "title": "Album A" }]
+        },
+        "dispatch_count": 1
+      }
+    },
+    {
+      "id": "catalog_success_pass_through",
+      "fn": "tma_catalog_read",
+      "granted": ["catalog.read"],
+      "input": { "kind": "json", "value": { "version": 1, "kind": "artist", "id": "ar-1" } },
+      "stub": {
+        "kind": "orchestrated",
+        "catalog_routes": [
+          {
+            "match": { "kind": "artist", "id": "ar-1" },
+            "response": {
+              "version": 1,
+              "ok": true,
+              "items": [{ "id": "ar-1", "kind": "artist", "title": "Artist A" }],
+              "next_cursor": null,
+              "error": null
+            }
+          }
+        ]
+      },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": true,
+        "response_fields": {
+          "version": 1,
+          "ok": true,
+          "items": [{ "id": "ar-1", "kind": "artist", "title": "Artist A" }],
+          "next_cursor": null
+        },
+        "dispatch_count": 1
+      }
+    },
+    {
+      "id": "catalog_business_failure_pass_through",
+      "fn": "tma_catalog_read",
+      "granted": ["catalog.read"],
+      "input": { "kind": "json", "value": { "version": 1, "kind": "artist" } },
+      "stub": {
+        "kind": "orchestrated",
+        "catalog_routes": [
+          {
+            "match": { "kind": "artist" },
+            "response": {
+              "version": 1,
+              "ok": false,
+              "items": [],
+              "next_cursor": null,
+              "error": { "code": "storage", "message": "底层目录读取失败" }
+            }
+          }
+        ]
+      },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "error_code": "storage",
+        "error_message": "底层目录读取失败",
+        "response_fields": { "items": [], "next_cursor": null },
+        "dispatch_count": 1
+      }
+    },
+    {
+      "id": "identity_parse_error_is_bad_request",
+      "fn": "tma_identity_read",
+      "granted": ["identity.read"],
+      "input": { "kind": "raw_json", "value": "{" },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "error_code": "bad_request",
+        "error_message_contains": "入参 JSON 非法",
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "identity_version_mismatch_precedes_gate",
+      "fn": "tma_identity_read",
+      "granted": [],
+      "input": { "kind": "json", "value": { "version": 3 } },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "error_code": "unsupported_version",
+        "error_message": "不支持的 identity DTO 版本",
+        "response_fields": { "user_id": null, "username": null, "is_admin": false },
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "identity_version_zero_precedes_gate",
+      "fn": "tma_identity_read",
+      "granted": [],
+      "input": { "kind": "json", "value": { "version": 0 } },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "error_code": "unsupported_version",
+        "error_message": "不支持的 identity DTO 版本",
+        "response_fields": { "user_id": null, "username": null, "is_admin": false },
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "identity_forbidden",
+      "fn": "tma_identity_read",
+      "granted": [],
+      "input": { "kind": "json", "value": { "version": 1 } },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "error_code": "forbidden",
+        "error_message": "插件未声明 identity.read 权限",
+        "response_fields": { "user_id": null, "username": null, "is_admin": false },
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "identity_success_pass_through",
+      "fn": "tma_identity_read",
+      "granted": ["identity.read"],
+      "input": { "kind": "json", "value": { "version": 1 } },
+      "stub": {
+        "kind": "orchestrated",
+        "identity": {
+          "version": 1,
+          "ok": true,
+          "user_id": "u-1",
+          "username": "alice",
+          "is_admin": true,
+          "error": null
+        }
+      },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": true,
+        "response_fields": { "user_id": "u-1", "username": "alice", "is_admin": true },
+        "dispatch_count": 1
+      }
+    },
+    {
+      "id": "identity_business_failure_pass_through",
+      "fn": "tma_identity_read",
+      "granted": ["identity.read"],
+      "input": { "kind": "json", "value": { "version": 1 } },
+      "stub": {
+        "kind": "orchestrated",
+        "identity": {
+          "version": 1,
+          "ok": false,
+          "user_id": null,
+          "username": null,
+          "is_admin": false,
+          "error": { "code": "unauthenticated", "message": "匿名调用无身份" }
+        }
+      },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "error_code": "unauthenticated",
+        "error_message": "匿名调用无身份",
+        "dispatch_count": 1
+      }
+    },
+    {
+      "id": "media_parse_error_is_bad_request",
+      "fn": "tma_media_stream",
+      "granted": ["media.stream"],
+      "input": { "kind": "raw_json", "value": "{" },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "status": 400,
+        "error_code": "bad_request",
+        "error_message_contains": "入参 JSON 非法",
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "media_version_mismatch_precedes_fields_and_gate",
+      "fn": "tma_media_stream",
+      "granted": [],
+      "input": {
+        "kind": "json",
+        "value": { "version": 9, "media_id": "  ", "range": { "start": 5, "end": 1 } }
+      },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "status": 400,
+        "error_code": "unsupported_version",
+        "error_message": "不支持的 media DTO 版本",
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "media_version_zero_precedes_all",
+      "fn": "tma_media_stream",
+      "granted": [],
+      "input": {
+        "kind": "json",
+        "value": { "version": 0, "media_id": "", "range": { "start": 10, "end": 5 } }
+      },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "status": 400,
+        "error_code": "unsupported_version",
+        "error_message": "不支持的 media DTO 版本",
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "media_empty_id_is_bad_request",
+      "fn": "tma_media_stream",
+      "granted": ["media.stream"],
+      "input": { "kind": "json", "value": { "version": 1, "media_id": "  " } },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "status": 400,
+        "error_code": "bad_request",
+        "error_message": "media_id 不能为空",
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "media_empty_id_precedes_gate",
+      "fn": "tma_media_stream",
+      "granted": [],
+      "input": { "kind": "json", "value": { "version": 1, "media_id": "" } },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "status": 400,
+        "error_code": "bad_request",
+        "error_message": "media_id 不能为空",
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "media_empty_id_precedes_range",
+      "fn": "tma_media_stream",
+      "granted": ["media.stream"],
+      "input": {
+        "kind": "json",
+        "value": { "version": 1, "media_id": "", "range": { "start": 10, "end": 5 } }
+      },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "status": 400,
+        "error_code": "bad_request",
+        "error_message": "media_id 不能为空",
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "media_invalid_range_416",
+      "fn": "tma_media_stream",
+      "granted": ["media.stream"],
+      "input": {
+        "kind": "json",
+        "value": { "version": 1, "media_id": "m-1", "range": { "start": 10, "end": 5 } }
+      },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "status": 416,
+        "error_code": "invalid_range",
+        "error_message": "range end 不能小于 start",
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "media_invalid_range_precedes_gate",
+      "fn": "tma_media_stream",
+      "granted": [],
+      "input": {
+        "kind": "json",
+        "value": { "version": 1, "media_id": "m-1", "range": { "start": 10, "end": 5 } }
+      },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "status": 416,
+        "error_code": "invalid_range",
+        "error_message": "range end 不能小于 start",
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "media_forbidden_403",
+      "fn": "tma_media_stream",
+      "granted": [],
+      "input": { "kind": "json", "value": { "version": 1, "media_id": "m-1" } },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "status": 403,
+        "error_code": "forbidden",
+        "error_message": "插件未声明 media.stream 权限",
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "media_range_start_zero_dispatches",
+      "fn": "tma_media_stream",
+      "granted": ["media.stream"],
+      "input": {
+        "kind": "json",
+        "value": { "version": 1, "media_id": "m-1", "range": { "start": 0 } }
+      },
+      "stub": {
+        "kind": "orchestrated",
+        "media_routes": [
+          {
+            "match": { "media_id": "m-1", "range": { "start": 0 } },
+            "response": {
+              "version": 1,
+              "ok": true,
+              "status": 200,
+              "content_type": "audio/mpeg"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": true,
+        "status": 200,
+        "response_fields": { "content_type": "audio/mpeg" },
+        "dispatch_count": 1
+      }
+    },
+    {
+      "id": "media_range_end_equals_start_dispatches",
+      "fn": "tma_media_stream",
+      "granted": ["media.stream"],
+      "input": {
+        "kind": "json",
+        "value": { "version": 1, "media_id": "m-2", "range": { "start": 5, "end": 5 } }
+      },
+      "stub": {
+        "kind": "orchestrated",
+        "media_routes": [
+          {
+            "match": { "media_id": "m-2", "range": { "start": 5, "end": 5 } },
+            "response": {
+              "version": 1,
+              "ok": true,
+              "status": 206,
+              "content_type": "audio/mpeg"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": true,
+        "status": 206,
+        "response_fields": { "content_type": "audio/mpeg" },
+        "dispatch_count": 1
+      }
+    },
+    {
+      "id": "media_success_pass_through",
+      "fn": "tma_media_stream",
+      "granted": ["media.stream"],
+      "input": {
+        "kind": "json",
+        "value": {
+          "version": 1,
+          "media_id": "track-1",
+          "codec": "flac",
+          "bitrate_kbps": 320,
+          "range": { "start": 10, "end": 99 }
+        }
+      },
+      "stub": {
+        "kind": "orchestrated",
+        "media_routes": [
+          {
+            "match": {
+              "media_id": "track-1",
+              "codec": "flac",
+              "bitrate_kbps": 320,
+              "range": { "start": 10, "end": 99 }
+            },
+            "response": {
+              "version": 1,
+              "ok": true,
+              "status": 206,
+              "content_type": "audio/flac",
+              "content_length": 90,
+              "content_range": "bytes 10-99/1000",
+              "body_b64": "REFUQQ==",
+              "stream_id": "st-1",
+              "error": null
+            }
+          }
+        ]
+      },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": true,
+        "status": 206,
+        "response_fields": {
+          "content_type": "audio/flac",
+          "content_length": 90,
+          "content_range": "bytes 10-99/1000",
+          "body_b64": "REFUQQ==",
+          "stream_id": "st-1"
+        },
+        "dispatch_count": 1
+      }
+    },
+    {
+      "id": "media_business_failure_pass_through",
+      "fn": "tma_media_stream",
+      "granted": ["media.stream"],
+      "input": { "kind": "json", "value": { "version": 1, "media_id": "missing" } },
+      "stub": {
+        "kind": "orchestrated",
+        "media_routes": [
+          {
+            "match": { "media_id": "missing" },
+            "response": {
+              "version": 1,
+              "ok": false,
+              "status": 404,
+              "error": { "code": "not_found", "message": "曲目不存在" }
+            }
+          }
+        ]
+      },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "status": 404,
+        "error_code": "not_found",
+        "error_message": "曲目不存在",
+        "dispatch_count": 1
+      }
+    }
+  ],
+  "testkit_extensions": [
+    {
+      "id": "strict_catalog_stub_missing_response",
+      "fn": "tma_catalog_read",
+      "granted": ["catalog.read"],
+      "input": { "kind": "json", "value": { "version": 1, "limit": 10 } },
+      "stub": { "kind": "strict_stub" },
+      "expect": {
+        "kind": "host_error",
+        "message_contains": ["tma_catalog_read", "桩无预设响应"],
+        "dispatch_count": 1
+      }
+    },
+    {
+      "id": "strict_identity_stub_missing_response",
+      "fn": "tma_identity_read",
+      "granted": ["identity.read"],
+      "input": { "kind": "json", "value": { "version": 1 } },
+      "stub": { "kind": "strict_stub" },
+      "expect": {
+        "kind": "host_error",
+        "message_contains": ["tma_identity_read", "桩无预设响应"],
+        "dispatch_count": 1
+      }
+    },
+    {
+      "id": "strict_media_stub_missing_response",
+      "fn": "tma_media_stream",
+      "granted": ["media.stream"],
+      "input": { "kind": "json", "value": { "version": 1, "media_id": "m-1" } },
+      "stub": { "kind": "strict_stub" },
+      "expect": {
+        "kind": "host_error",
+        "message_contains": ["tma_media_stream", "桩无预设响应"],
+        "dispatch_count": 1
+      }
+    },
+    {
+      "id": "wasm_no_manifest_catalog_version_still_checked",
+      "fn": "tma_catalog_read",
+      "granted": null,
+      "input": { "kind": "json", "value": { "version": 2, "limit": 0 } },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "error_code": "unsupported_version",
+        "error_message": "不支持的 catalog DTO 版本",
+        "response_fields": { "items": [], "next_cursor": null },
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "wasm_no_manifest_catalog_limit_still_checked",
+      "fn": "tma_catalog_read",
+      "granted": null,
+      "input": { "kind": "json", "value": { "version": 1, "limit": 0 } },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "error_code": "bad_request",
+        "error_message": "limit 必须在 1..=1000 内",
+        "response_fields": { "items": [], "next_cursor": null },
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "wasm_no_manifest_catalog_dispatches",
+      "fn": "tma_catalog_read",
+      "granted": null,
+      "input": { "kind": "json", "value": { "version": 1, "kind": "artist", "limit": 5 } },
+      "stub": {
+        "kind": "orchestrated",
+        "catalog_routes": [
+          {
+            "match": { "kind": "artist", "limit": 5 },
+            "response": {
+              "version": 1,
+              "ok": true,
+              "items": [{ "id": "ar-1", "kind": "artist", "title": "Artist A" }]
+            }
+          }
+        ]
+      },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": true,
+        "response_fields": {
+          "items": [{ "id": "ar-1", "kind": "artist", "title": "Artist A" }]
+        },
+        "dispatch_count": 1
+      }
+    },
+    {
+      "id": "wasm_no_manifest_identity_version_still_checked",
+      "fn": "tma_identity_read",
+      "granted": null,
+      "input": { "kind": "json", "value": { "version": 3 } },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "error_code": "unsupported_version",
+        "error_message": "不支持的 identity DTO 版本",
+        "response_fields": { "user_id": null, "username": null, "is_admin": false },
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "wasm_no_manifest_identity_dispatches",
+      "fn": "tma_identity_read",
+      "granted": null,
+      "input": { "kind": "json", "value": { "version": 1 } },
+      "stub": {
+        "kind": "orchestrated",
+        "identity": {
+          "version": 1,
+          "ok": true,
+          "user_id": "u-1",
+          "username": "alice",
+          "is_admin": false,
+          "error": null
+        }
+      },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": true,
+        "response_fields": { "user_id": "u-1", "username": "alice", "is_admin": false },
+        "dispatch_count": 1
+      }
+    },
+    {
+      "id": "wasm_no_manifest_media_version_still_checked",
+      "fn": "tma_media_stream",
+      "granted": null,
+      "input": { "kind": "json", "value": { "version": 9, "media_id": "" } },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "status": 400,
+        "error_code": "unsupported_version",
+        "error_message": "不支持的 media DTO 版本",
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "wasm_no_manifest_media_fields_still_checked",
+      "fn": "tma_media_stream",
+      "granted": null,
+      "input": {
+        "kind": "json",
+        "value": { "version": 1, "media_id": "", "range": { "start": 5, "end": 1 } }
+      },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": false,
+        "status": 400,
+        "error_code": "bad_request",
+        "error_message": "media_id 不能为空",
+        "dispatch_count": 0
+      }
+    },
+    {
+      "id": "wasm_no_manifest_media_dispatches",
+      "fn": "tma_media_stream",
+      "granted": null,
+      "input": {
+        "kind": "json",
+        "value": { "version": 1, "media_id": "m-1", "codec": "flac" }
+      },
+      "stub": {
+        "kind": "orchestrated",
+        "media_routes": [
+          {
+            "match": { "media_id": "m-1", "codec": "flac" },
+            "response": {
+              "version": 1,
+              "ok": true,
+              "status": 200,
+              "content_type": "audio/flac"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "kind": "dto",
+        "version": 1,
+        "ok": true,
+        "status": 200,
+        "response_fields": { "content_type": "audio/flac" },
+        "dispatch_count": 1
+      }
+    }
+  ]
+}

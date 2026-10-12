@@ -9,12 +9,11 @@ use std::sync::Arc;
 use testkit::{BEATLES_MBID, PluginErrorCode, Route, RouteBuilder, StubProxy, artist_query};
 
 /// 构建 wasm → 测试私钥 pack → 验签 → 实例化（`tma_config` 返回 runtime_config 原样）。
-fn load(runtime_config: &str, proxy: Arc<StubProxy>) -> testkit::LoadedPlugin {
-    testkit::load_dir(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")),
-        runtime_config,
-        proxy,
-    )
+fn load(runtime_config: &str, proxy: Arc<StubProxy>) -> testkit::Driver {
+    testkit::HostSim::new()
+        .config(runtime_config)
+        .proxy(proxy)
+        .load_dir(std::path::Path::new(env!("CARGO_MANIFEST_DIR")))
 }
 
 /// bio 中文缺失 → 英文重取；图片取最大尺寸；MBID 直落；api_key 进 query。
@@ -51,7 +50,7 @@ fn lastfm_bio_falls_back_to_en_and_emits_image_ids_and_url() {
             body: en_body.to_string(),
         },
     ]);
-    let provider = load(r#"{"api_key":"test-key","language":"zh"}"#, proxy.clone());
+    let provider = load(r#"{"api_key":"test-key","language":"zh"}"#, proxy);
 
     let r = provider
         .call_scrape(artist_query(Some(BEATLES_MBID), Some("The Beatles")))
@@ -77,7 +76,7 @@ fn lastfm_bio_falls_back_to_en_and_emits_image_ids_and_url() {
     assert!((r.confidence - 1.0).abs() < f32::EPSILON, "MBID 直查 1.0");
 
     // 两次 getInfo：lang=zh 与 lang=en；api_key 原样拼 query。
-    let urls = proxy.urls();
+    let urls = provider.http_urls();
     assert_eq!(urls.len(), 2);
     assert!(urls[0].starts_with("https://ws.audioscrobbler.com/2.0/"));
     assert!(
@@ -112,13 +111,12 @@ fn lastfm_body_error_maps_to_permanent_failure() {
 /// 未配置 api_key：PermanentFailure 且零外呼（原生 new() 返回 None 的等价语义）。
 #[test]
 fn lastfm_missing_api_key_fails_without_outbound() {
-    let proxy = StubProxy::new(vec![]);
-    let provider = load("{}", proxy.clone());
+    let provider = load("{}", StubProxy::new(vec![]));
 
     let err = provider
         .call_scrape(artist_query(Some(BEATLES_MBID), None))
         .unwrap_err();
     assert_eq!(err.code, PluginErrorCode::PermanentFailure);
     assert!(err.message.contains("api_key"));
-    assert!(proxy.requests().is_empty(), "缺凭据不应外呼");
+    assert!(provider.http_requests().is_empty(), "缺凭据不应外呼");
 }

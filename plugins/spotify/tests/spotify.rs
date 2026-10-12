@@ -12,12 +12,11 @@ use testkit::{
 };
 
 /// 构建 wasm → 测试私钥 pack → 验签 → 实例化（`tma_config` 返回 runtime_config 原样）。
-fn load(runtime_config: &str, proxy: Arc<StubProxy>) -> testkit::LoadedPlugin {
-    testkit::load_dir(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")),
-        runtime_config,
-        proxy,
-    )
+fn load(runtime_config: &str, proxy: Arc<StubProxy>) -> testkit::Driver {
+    testkit::HostSim::new()
+        .config(runtime_config)
+        .proxy(proxy)
+        .load_dir(std::path::Path::new(env!("CARGO_MANIFEST_DIR")))
 }
 
 /// token POST（Basic + form body）→ 名称搜索（Bearer）；0.8 置信度。
@@ -35,7 +34,7 @@ fn spotify_token_then_artist_search_with_auth_headers() {
     ]);
     let provider = load(
         r#"{"client_id":"my-id","client_secret":"my-secret"}"#,
-        proxy.clone(),
+        proxy,
     );
 
     let r = provider
@@ -51,7 +50,7 @@ fn spotify_token_then_artist_search_with_auth_headers() {
     );
     assert!((r.confidence - 0.8).abs() < f32::EPSILON, "名称搜索 0.8");
 
-    let reqs = proxy.requests();
+    let reqs = provider.http_requests();
     assert_eq!(reqs.len(), 2, "token → search");
 
     // token：POST + Basic base64(id:secret) + form body。
@@ -106,7 +105,7 @@ fn spotify_isrc_track_query_resolves_first_artist() {
     ]);
     let provider = load(
         r#"{"client_id":"my-id","client_secret":"my-secret"}"#,
-        proxy.clone(),
+        proxy,
     );
 
     let query = EntityQuery {
@@ -127,7 +126,7 @@ fn spotify_isrc_track_query_resolves_first_artist() {
         "ISRC 高于名称匹配，实际 {}",
         r.confidence
     );
-    let urls = proxy.urls();
+    let urls = provider.http_urls();
     assert!(
         urls[1].contains("q=isrc%3AJPU901700876&type=track&limit=1"),
         "ISRC 查 track: {}",
@@ -169,12 +168,11 @@ fn spotify_401_maps_to_geo_restriction_permanent_failure() {
 /// 未配置 client credentials：PermanentFailure 且零外呼。
 #[test]
 fn spotify_missing_credentials_fails_without_outbound() {
-    let proxy = StubProxy::new(vec![]);
-    let provider = load("{}", proxy.clone());
+    let provider = load("{}", StubProxy::new(vec![]));
 
     let err = provider
         .call_scrape(artist_query(None, Some("Some Artist")))
         .unwrap_err();
     assert_eq!(err.code, PluginErrorCode::PermanentFailure);
-    assert!(proxy.requests().is_empty(), "缺凭据不应外呼");
+    assert!(provider.http_requests().is_empty(), "缺凭据不应外呼");
 }

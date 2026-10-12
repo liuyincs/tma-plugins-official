@@ -106,17 +106,21 @@ tma_plugin_sdk::plugin! {
 
 ## 验收测试
 
-`tests/` 放行为级验收测试：`testkit`（仓库根共享件）负责构建 wasm、测试私钥
-打包验签、extism 实例化与宿主侧注入——`http_request` 出站 stub 代理，以及
-ABI 1.6 的三条 capability 宿主函数（`tma_catalog_read`/`tma_identity_read`/
-`tma_media_stream`，由 `CapabilityStub` 的字段匹配路由表与 identity 槽位
-应答；校验顺序与宿主一致——入参/DTO 版本/字段/权限门失败写回结构化
-错误应答，manifest 未声明的 capability 返回 `forbidden`（media 为 403）；
-仅桩未配置或未命中时以宿主函数级失败显式报错）。测试直接调
-`scrape`/`tma_action`/`tma_event`/`tma_http` 导出断言请求形状与响应语义——
-出站刮削插件写法见 `plugins/spotify/tests/`，入站 HTTP 插件（`http`
-扩展点 + capability 权限）见 `plugins/subsonic/tests/`；`cargo test` 在
-插件目录内跑全量（含双 target 纯逻辑单测）。
+`tests/` 放行为级验收测试：`testkit`（仓库根共享件）是唯一的装载与驱动
+接口——`HostSim` builder 收拢注入面（运行时 config JSON、`http_request`
+出站 stub 代理、capability 桩）后 `load_dir` 完成「构建 wasm、测试私钥
+打包验签、extism 实例化」，返回 `Driver` 供测试调 `scrape`/`tma_action`/
+`tma_event`/`tma_http` 导出并读出请求留痕。ABI 1.6 的三条 capability 宿主
+函数（`tma_catalog_read`/`tma_identity_read`/`tma_media_stream`）由
+`CapabilityStub` 的字段匹配路由表与 identity 槽位应答；校验顺序与宿主
+逐分支一致（失败写回结构化错误应答，manifest 未声明的 capability 返回
+`forbidden`（media 为 403）；仅桩未配置或未命中时以宿主函数级失败显式
+报错）——catalog 是权限门先于 `limit` 校验，media 是字段校验（`media_id`
+非空、range 合法）先于权限门，该顺序由 testkit 内置契约夹具
+（`contract/capability_host.json`，转写自宿主源）回放锁定。出站刮削插件
+写法见 `plugins/spotify/tests/`，入站 HTTP 插件（`http` 扩展点 + capability
+权限）见 `plugins/subsonic/tests/`；`cargo test` 在插件目录内跑全量
+（含双 target 纯逻辑单测）。
 CI 在发布签名前强制执行（`.github/workflows/test.yml` 与 `release.yml`）。
 
 ## 签名与打包
