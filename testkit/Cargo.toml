@@ -16,7 +16,7 @@ description = "TMA 官方插件验收测试共享件：stub 出站代理、宿�
 tma-plugin-sdk = { version = "0.3", features = ["package"] }
 # 与宿主侧 tma-plugin-host 同版本/同特性口径（运行时走宿主注入的桩函数，
 # 不引 ureq、不注册文件系统/远程 wasm）。
-extism = { version = "1.30", default-features = false, features = ["wasmtime-default-features"] }
+extism = { version = "1.41", default-features = false, features = ["wasmtime-default-features"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 base64 = "0.22"
