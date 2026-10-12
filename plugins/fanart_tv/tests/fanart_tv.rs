@@ -8,12 +8,11 @@ use std::sync::Arc;
 use testkit::{BEATLES_MBID, PluginErrorCode, RouteBuilder, StubProxy, artist_query};
 
 /// 构建 wasm → 测试私钥 pack → 验签 → 实例化（`tma_config` 返回 runtime_config 原样）。
-fn load(runtime_config: &str, proxy: Arc<StubProxy>) -> testkit::LoadedPlugin {
-    testkit::load_dir(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")),
-        runtime_config,
-        proxy,
-    )
+fn load(runtime_config: &str, proxy: Arc<StubProxy>) -> testkit::Driver {
+    testkit::HostSim::new()
+        .config(runtime_config)
+        .proxy(proxy)
+        .load_dir(std::path::Path::new(env!("CARGO_MANIFEST_DIR")))
 }
 
 /// thumb 作主图 + 各 kind 取 likes 最高；hdmusiclogo 优先于 musiclogo。
@@ -32,7 +31,7 @@ fn fanart_thumb_main_and_max_likes_extras() {
             "musicbanner": [{ "url": "https://fanart.tv/banner.jpg", "likes": "5" }]
         }),
     )]);
-    let provider = load(r#"{"api_key":"fanart-key"}"#, proxy.clone());
+    let provider = load(r#"{"api_key":"fanart-key"}"#, proxy);
 
     let r = provider
         .call_scrape(artist_query(Some(BEATLES_MBID), None))
@@ -66,7 +65,7 @@ fn fanart_thumb_main_and_max_likes_extras() {
     // external_id = MBID；api_key 拼在 query。
     assert_eq!(r.external_ids.len(), 1);
     assert_eq!(r.external_ids[0].external_id, BEATLES_MBID);
-    let urls = proxy.urls();
+    let urls = provider.http_urls();
     assert_eq!(urls.len(), 1);
     assert!(
         urls[0].contains(&format!(
@@ -80,12 +79,11 @@ fn fanart_thumb_main_and_max_likes_extras() {
 /// 未配置 api_key：PermanentFailure 且零外呼。
 #[test]
 fn fanart_missing_api_key_fails_without_outbound() {
-    let proxy = StubProxy::new(vec![]);
-    let provider = load("{}", proxy.clone());
+    let provider = load("{}", StubProxy::new(vec![]));
 
     let err = provider
         .call_scrape(artist_query(Some(BEATLES_MBID), None))
         .unwrap_err();
     assert_eq!(err.code, PluginErrorCode::PermanentFailure);
-    assert!(proxy.requests().is_empty(), "缺凭据不应外呼");
+    assert!(provider.http_requests().is_empty(), "缺凭据不应外呼");
 }

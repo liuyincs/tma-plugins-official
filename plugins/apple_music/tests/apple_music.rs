@@ -8,12 +8,11 @@ use std::sync::Arc;
 use testkit::{PluginErrorCode, RouteBuilder, StubProxy, artist_query, artist_query_with_known};
 
 /// 构建 wasm → 测试私钥 pack → 验签 → 实例化（`tma_config` 返回 runtime_config 原样）。
-fn load(runtime_config: &str, proxy: Arc<StubProxy>) -> testkit::LoadedPlugin {
-    testkit::load_dir(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")),
-        runtime_config,
-        proxy,
-    )
+fn load(runtime_config: &str, proxy: Arc<StubProxy>) -> testkit::Driver {
+    testkit::HostSim::new()
+        .config(runtime_config)
+        .proxy(proxy)
+        .load_dir(std::path::Path::new(env!("CARGO_MANIFEST_DIR")))
 }
 
 /// 目录搜索：Bearer developer token + storefront 进路径；置信度 0.9。
@@ -28,10 +27,7 @@ fn apple_music_search_bearer_token_and_storefront() {
             }]}}
         }),
     )]);
-    let provider = load(
-        r#"{"developer_token":"dev-tok","storefront":"jp"}"#,
-        proxy.clone(),
-    );
+    let provider = load(r#"{"developer_token":"dev-tok","storefront":"jp"}"#, proxy);
 
     let r = provider
         .call_scrape(artist_query(None, Some("Some Artist")))
@@ -46,7 +42,7 @@ fn apple_music_search_bearer_token_and_storefront() {
     );
     assert!((r.confidence - 0.9).abs() < f32::EPSILON, "搜索命中 0.9");
 
-    let reqs = proxy.requests();
+    let reqs = provider.http_requests();
     assert_eq!(reqs.len(), 1);
     assert_eq!(
         reqs[0].headers.get("Authorization").map(String::as_str),
@@ -65,8 +61,7 @@ fn apple_music_search_bearer_token_and_storefront() {
 /// 已知 Apple ID：直接复用，零外呼。
 #[test]
 fn apple_music_known_id_short_circuits_zero_outbound() {
-    let proxy = StubProxy::new(vec![]);
-    let provider = load(r#"{"developer_token":"dev-tok"}"#, proxy.clone());
+    let provider = load(r#"{"developer_token":"dev-tok"}"#, StubProxy::new(vec![]));
 
     let r = provider
         .call_scrape(artist_query_with_known(
@@ -79,18 +74,17 @@ fn apple_music_known_id_short_circuits_zero_outbound() {
     assert_eq!(r.external_ids.len(), 1);
     assert_eq!(r.external_ids[0].external_id, "apple-artist-123");
     assert!((r.confidence - 1.0).abs() < f32::EPSILON);
-    assert!(proxy.requests().is_empty(), "已知 ID 不应外呼");
+    assert!(provider.http_requests().is_empty(), "已知 ID 不应外呼");
 }
 
 /// 未配置 developer_token：PermanentFailure 且零外呼。
 #[test]
 fn apple_music_missing_token_fails_without_outbound() {
-    let proxy = StubProxy::new(vec![]);
-    let provider = load("{}", proxy.clone());
+    let provider = load("{}", StubProxy::new(vec![]));
 
     let err = provider
         .call_scrape(artist_query(None, Some("Some Artist")))
         .unwrap_err();
     assert_eq!(err.code, PluginErrorCode::PermanentFailure);
-    assert!(proxy.requests().is_empty(), "缺凭据不应外呼");
+    assert!(provider.http_requests().is_empty(), "缺凭据不应外呼");
 }
