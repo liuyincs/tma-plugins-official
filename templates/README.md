@@ -18,4 +18,8 @@ cargo build --target wasm32-unknown-unknown --release
 2. `Cargo.toml`：`package.name`（`-` 转成 wasm 文件名里的 `_`）。
 3. `src/lib.rs`：`slug` 换成你的 provider slug；`run_scrape` 是业务替换点。
 
+模板不进 `plugins/` 发现面，但 CI 会显式构建它的 wasm（`--locked`），
+且其 `Cargo.lock` 与插件同受 `scripts/check-guest-deps.py` 的 guest
+依赖边一致性校验——复制成插件后沿用同一套约束。
+
 签名、打包与发布流程见 [docs/authoring.md](../docs/authoring.md)。
