@@ -45,11 +45,11 @@ jobs:
           target: wasm32-unknown-unknown
 
       - name: 构建 wasm
-        run: cargo build --target wasm32-unknown-unknown --release --manifest-path "plugins/${{ steps.meta.outputs.dir }}/Cargo.toml"
+        run: cargo build --locked --target wasm32-unknown-unknown --release --manifest-path "plugins/${{ steps.meta.outputs.dir }}/Cargo.toml"
 
       # 签名前先过验收：测试自身会确保 wasm 已建（幂等），红则中止发布。
       - name: 验收测试
-        run: cargo test --manifest-path "plugins/${{ steps.meta.outputs.dir }}/Cargo.toml"
+        run: cargo test --locked --manifest-path "plugins/${{ steps.meta.outputs.dir }}/Cargo.toml"
 
       - name: 安装 tma-plugin-dev
         run: cargo install tma-plugin-dev --version 0.3.0 --locked

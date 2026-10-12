@@ -36,8 +36,9 @@ pub fn test_verifying_key() -> VerifyingKey {
 // 打包 / 验签 / 加载
 // ---------------------------------------------------------------------------
 
-/// 确保插件 wasm 产物存在：`cargo build --target wasm32-unknown-unknown
-/// --release`（cargo 增量缓存，重复调用近乎无成本）。返回产物路径。
+/// 确保插件 wasm 产物存在：`cargo build --locked --target
+/// wasm32-unknown-unknown --release`（cargo 增量缓存，重复调用近乎无成本；
+/// --locked 使测试同样拒绝静默改写 lockfile）。返回产物路径。
 pub fn ensure_wasm_built(plugin_dir: &Path) -> PathBuf {
     let toml = std::fs::read_to_string(plugin_dir.join("Cargo.toml"))
         .unwrap_or_else(|e| panic!("读 {:?}/Cargo.toml 失败: {e}", plugin_dir));
@@ -57,13 +58,19 @@ pub fn ensure_wasm_built(plugin_dir: &Path) -> PathBuf {
         crate_name.replace('-', "_")
     ));
     let status = std::process::Command::new("cargo")
-        .args(["build", "--target", "wasm32-unknown-unknown", "--release"])
+        .args([
+            "build",
+            "--locked",
+            "--target",
+            "wasm32-unknown-unknown",
+            "--release",
+        ])
         .current_dir(plugin_dir)
         .status()
         .expect("启动 cargo build 失败（需要 wasm32-unknown-unknown target）");
     assert!(
         status.success(),
-        "cargo build --target wasm32-unknown-unknown --release 失败（{plugin_dir:?}）"
+        "cargo build --locked --target wasm32-unknown-unknown --release 失败（{plugin_dir:?}）"
     );
     assert!(wasm.is_file(), "缺少 {wasm:?}（crate {crate_name}）");
     wasm

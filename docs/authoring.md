@@ -28,7 +28,14 @@ JSON object 且 `id`/`name`/`version` 非空，`id` 全局唯一且符合下文
 「manifest.json 字段」表的格式与长度规则，目录名限 `[A-Za-z0-9_-]`
 单路径段（symlink 同样拒绝）；任一目录不合规即整个 discover job
 失败，不会被静默跳过。`catalog.json` 仍只由发布脚本在发
-tag 时回写（见「在本仓库发布」）。
+tag 时回写（见「在本仓库发布」）。`templates/plugin-template` 不属于
+发现面，由独立 template job 显式构建 wasm；全部 cargo 调用带 `--locked`，
+lockfile 缺失或与 Cargo.toml 脱节即失败。`guest-deps` job 另跑
+`scripts/check-guest-deps.py`：同一 resolved `extism-pdk` 版本在所有
+workspace（插件 + 模板 + testkit）必须解析出同一 `extism-convert`——
+这条边经 pdk 编进 wasm，属 guest 编解码闭包；不同 pdk 版本线、SDK 版本
+与宿主侧依赖差异不比较，确需的例外在 `scripts/guest-deps-exceptions.json`
+按 workspace + 版本登记并写明理由。
 
 ## SDK 与 FFI
 

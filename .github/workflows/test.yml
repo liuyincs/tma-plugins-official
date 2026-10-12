@@ -7,7 +7,11 @@ name: Test
 # scripts/discover-plugins.py 从 plugins/ 一级子目录自动发现并做契约
 # 校验（manifest.json + Cargo.toml + 全局唯一 id），新增插件无需改本
 # 文件。testkit 是共享测试件，自测与 check 单独一个 job，不进插件
-# matrix。
+# matrix；templates/plugin-template 也不在发现面内，由 template job
+# 显式构建 wasm。全部 cargo 调用带 --locked：lockfile 缺失或与
+# Cargo.toml 脱节即失败，验证过程不静默改 lockfile。guest-deps job 跑
+# scripts/check-guest-deps.py，校验同版本 extism-pdk 在各 workspace
+# 解析出的 extism-convert 一致（guest 编解码边，INT-7）。
 on:
   push:
     branches: [main]
@@ -47,12 +51,38 @@ jobs:
       - name: 构建 wasm
         env:
           PLUGIN_DIR: ${{ matrix.dir }}
-        run: cargo build --target wasm32-unknown-unknown --release --manifest-path "plugins/$PLUGIN_DIR/Cargo.toml"
+        run: cargo build --locked --target wasm32-unknown-unknown --release --manifest-path "plugins/$PLUGIN_DIR/Cargo.toml"
 
       - name: 测试（单元 + 验收）
         env:
           PLUGIN_DIR: ${{ matrix.dir }}
-        run: cargo test --manifest-path "plugins/$PLUGIN_DIR/Cargo.toml"
+        run: cargo test --locked --manifest-path "plugins/$PLUGIN_DIR/Cargo.toml"
+
+  # 模板不是生产插件、不进 discover matrix，但它的 lockfile 同样是独立
+  # workspace：不建 CI 就会在依赖统一解析漂移时漏网（INT-6/46b22d2）。
+  template:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: wasm32-unknown-unknown
+
+      - name: 构建 wasm
+        run: cargo build --locked --target wasm32-unknown-unknown --release --manifest-path templates/plugin-template/Cargo.toml
+
+  # 只读检查：解析各 workspace Cargo.lock 的 guest 边（pdk->convert），
+  # 不运行 cargo、不改工作树；差异需在 scripts/guest-deps-exceptions.json
+  # 登记或失败。
+  guest-deps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 校验 guest 依赖边一致性
+        run: python3 scripts/check-guest-deps.py
 
   testkit:
     runs-on: ubuntu-latest
@@ -63,5 +93,5 @@ jobs:
         with:
           toolchain: stable
 
-      - run: cargo check --manifest-path testkit/Cargo.toml
-      - run: cargo test --manifest-path testkit/Cargo.toml
+      - run: cargo check --locked --manifest-path testkit/Cargo.toml
+      - run: cargo test --locked --manifest-path testkit/Cargo.toml
